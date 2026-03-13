@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Heart Risk Predictor</title>
+
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Heart Disease Predictor</h1>
+
+<form id="healthForm">
+
+<input type="number" name="age" placeholder="Age" required>
+
+<input type="number" name="sex" placeholder="Sex (1 Male / 0 Female)" required>
+
+<input type="number" name="trestbps" placeholder="Resting Blood Pressure" required>
+
+<input type="number" name="chol" placeholder="Cholesterol" required>
+
+<input type="number" name="fbs" placeholder="Fasting Blood Sugar (1/0)" required>
+
+<input type="number" name="thalach" placeholder="Max Heart Rate" required>
+
+<button type="submit">Predict</button>
+
+</form>
+
+<div id="result"></div>
+
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+</body>
+</html>
