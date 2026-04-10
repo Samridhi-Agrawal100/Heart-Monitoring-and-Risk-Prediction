@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECG Interpretation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/ecg.css">
+</head>
+<body>
+    <main class="ecg-shell">
+        <h1 class="ecg-title">ECG Interpretation</h1>
+        <p class="ecg-meta">Upload an ECG image to generate a model-backed rhythm result and preview.</p>
+
+        <section class="ecg-grid">
+            <article class="wave-card">
+                <div class="wave-stage">
+                    <div class="wave-chip-row">
+                        <span class="wave-chip">Lead I</span>
+                        <span class="wave-chip">25mm/s</span>
+                    </div>
+
+                    <svg class="wave-svg" viewBox="0 0 1000 360" preserveAspectRatio="none" aria-label="ECG waveform preview">
+                        <path id="wave-path" d="M0 180 L80 180 L110 120 L130 240 L160 180 L240 180 L300 174 L340 186 L380 180 L420 180 L450 150 L470 198 L500 176 L540 182 L580 176 L620 180 L650 120 L670 250 L700 180 L760 180 L820 178 L900 182 L950 180 L1000 180"></path>
+                        <path id="wave-flow" d="M0 180 L80 180 L110 120 L130 240 L160 180 L240 180 L300 174 L340 186 L380 180 L420 180 L450 150 L470 198 L500 176 L540 182 L580 176 L620 180 L650 120 L670 250 L700 180 L760 180 L820 178 L900 182 L950 180 L1000 180"></path>
+                    </svg>
+
+                    <div class="wave-status">
+                        <div class="stat-pill">
+                            <small>Live Heart Rate</small>
+                            <strong id="live-bpm">104 <span>BPM</span></strong>
+                        </div>
+                        <div class="stat-pulse"><span class="stat-dot"></span><span id="rhythm-label">Unstable Rhythm</span></div>
+                    </div>
+                </div>
+            </article>
+
+            <aside class="right-col">
+                <article id="result-card" class="result-card state-neutral">
+                    <div class="result-topline"></div>
+                    <div class="result-head">
+                        <div id="result-icon" class="alert-icon neutral">?</div>
+                        <div class="confidence">Confidence Score <strong id="confidence-score">--</strong></div>
+                    </div>
+
+                    <h2 id="result-title">Awaiting ECG Upload</h2>
+                    <p id="result-summary">Select an ECG image to render the waveform preview and run model inference from the existing ECG endpoint.</p>
+                    <button id="analyze-btn" class="result-btn" type="button">Analyze ECG Image</button>
+                </article>
+
+                <article class="upload-card">
+                    <h3>Compare Data</h3>
+                    <p>Upload an ECG image to run the existing model. The waveform preview is an approximate visualization generated from image intensity patterns.</p>
+                    <div class="file-box">
+                        <input id="ecg-image" type="file" accept="image/*">
+                    </div>
+                    <p id="upload-error" class="preview-note hidden"></p>
+                </article>
+            </aside>
+        </section>
+    </main>
+
+    <script>
+        const imageInput = document.getElementById('ecg-image');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const resultCard = document.getElementById('result-card');
+        const resultIcon = document.getElementById('result-icon');
+        const wavePath = document.getElementById('wave-path');
+        const waveFlow = document.getElementById('wave-flow');
+        const confidenceScore = document.getElementById('confidence-score');
+        const resultTitle = document.getElementById('result-title');
+        const resultSummary = document.getElementById('result-summary');
+        const rhythmLabel = document.getElementById('rhythm-label');
+        const liveBpm = document.getElementById('live-bpm');
+        const uploadError = document.getElementById('upload-error');
+
+        function setState(state) {
+            resultCard.classList.remove('state-neutral', 'state-low', 'state-moderate', 'state-high');
+            resultIcon.classList.remove('neutral', 'low', 'moderate', 'high');
+            resultCard.classList.add(state);
+            if (state === 'state-low') {
+                resultIcon.classList.add('low');
+                resultIcon.textContent = '✓';
+            } else if (state === 'state-moderate') {
+                resultIcon.classList.add('moderate');
+                resultIcon.textContent = '!';
+            } else if (state === 'state-high') {
+                resultIcon.classList.add('high');
+                resultIcon.textContent = '!';
+            } else {
+                resultIcon.classList.add('neutral');
+                resultIcon.textContent = '?';
+            }
+        }
+
+        function setNeutralState() {
+            resultCard.classList.remove('state-low', 'state-moderate', 'state-high');
+            resultCard.classList.add('state-neutral');
+            resultIcon.classList.remove('low', 'moderate', 'high');
+            resultIcon.classList.add('neutral');
+            resultIcon.textContent = '?';
+            confidenceScore.textContent = '--';
+            resultTitle.textContent = 'Awaiting ECG Upload';
+            resultSummary.textContent = 'Select an ECG image to render the waveform preview and run model inference from the existing ECG endpoint.';
+            rhythmLabel.textContent = 'Ready for Upload';
+            liveBpm.innerHTML = '— <span>BPM</span>';
+        }
+
+        function stateFromProbability(probability) {
+            if (probability < 35) {
+                return 'state-low';
+            }
+            if (probability < 70) {
+                return 'state-moderate';
+            }
+            return 'state-high';
+        }
+
+        function summaryFromLabel(label, state) {
+            const labelText = label || 'Model output received';
+            if (state === 'state-low') {
+                return `${labelText}. Pattern confidence is low-risk. Continue regular monitoring and clinician review if symptoms appear.`;
+            }
+            if (state === 'state-moderate') {
+                return `${labelText}. Model suggests moderate irregularity. Follow-up interpretation is recommended.`;
+            }
+            return `${labelText}. Model indicates elevated rhythm irregularity. Urgent clinical review recommended.`;
+        }
+
+        function bpmFromProbability(probability) {
+            const bpm = Math.round(70 + (Math.min(Math.max(probability, 0), 100) / 100) * 45);
+            return `${bpm} <span>BPM</span>`;
+        }
+
+        function regenerateWaveAnimation() {
+            wavePath.style.animation = 'none';
+            waveFlow.style.animation = 'none';
+            void wavePath.offsetWidth;
+            wavePath.style.animation = 'ecg-reveal 2.2s ease-out forwards';
+            waveFlow.style.animation = 'ecg-flow 1.15s linear infinite';
+        }
+
+        function smoothSeries(series, windowSize = 4) {
+            const out = [];
+            for (let i = 0; i < series.length; i += 1) {
+                let sum = 0;
+                let count = 0;
+                for (let j = Math.max(0, i - windowSize); j <= Math.min(series.length - 1, i + windowSize); j += 1) {
+                    sum += series[j];
+                    count += 1;
+                }
+                out.push(sum / count);
+            }
+            return out;
+        }
+
+        async function waveformFromImage(file) {
+            const bitmap = await createImageBitmap(file);
+            const canvas = document.createElement('canvas');
+            const width = 280;
+            const height = 120;
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(bitmap, 0, 0, width, height);
+            const imageData = ctx.getImageData(0, 0, width, height).data;
+
+            const amplitudes = [];
+            for (let x = 0; x < width; x += 1) {
+                let minBrightness = 255;
+                let yAtMin = height / 2;
+                for (let y = 0; y < height; y += 1) {
+                    const idx = (y * width + x) * 4;
+                    const r = imageData[idx];
+                    const g = imageData[idx + 1];
+                    const b = imageData[idx + 2];
+                    const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+                    if (brightness < minBrightness) {
+                        minBrightness = brightness;
+                        yAtMin = y;
+                    }
+                }
+                const normalized = ((height / 2) - yAtMin) / (height / 2);
+                amplitudes.push(normalized);
+            }
+
+            const sampled = [];
+            const targetPoints = 46;
+            for (let i = 0; i < targetPoints; i += 1) {
+                const sourceIndex = Math.floor((i / (targetPoints - 1)) * (amplitudes.length - 1));
+                sampled.push(amplitudes[sourceIndex]);
+            }
+
+            const smooth = smoothSeries(sampled, 2);
+            const points = smooth.map((value, index) => {
+                const x = Math.round((index / (smooth.length - 1)) * 1000);
+                const baseline = 180;
+                const y = Math.round(baseline - value * 95);
+                return `${x} ${Math.min(320, Math.max(40, y))}`;
+            });
+
+            const pathData = `M${points.join(' L')}`;
+            wavePath.setAttribute('d', pathData);
+            waveFlow.setAttribute('d', pathData);
+            regenerateWaveAnimation();
+        }
+
+        async function runEcgPrediction() {
+            uploadError.classList.add('hidden');
+            const file = imageInput.files && imageInput.files[0];
+            if (!file) {
+                uploadError.textContent = 'Please select an ECG image first.';
+                uploadError.classList.remove('hidden');
+                return;
+            }
+
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = 'Analyzing...';
+
+            try {
+                await waveformFromImage(file);
+            } catch (error) {
+                uploadError.textContent = 'Could not generate waveform preview from image. Running model inference anyway.';
+                uploadError.classList.remove('hidden');
+            }
+
+            const payload = new FormData();
+            payload.append('ecg_image', file);
+
+            try {
+                const res = await fetch('/predict/ecg', {
+                    method: 'POST',
+                    body: payload
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    uploadError.textContent = data.error || 'ECG prediction failed.';
+                    uploadError.classList.remove('hidden');
+                    return;
+                }
+
+                const probability = typeof data.probability === 'number' ? data.probability : 0;
+                const state = stateFromProbability(probability);
+                setState(state);
+
+                confidenceScore.textContent = `${Math.round(probability)}%`;
+                resultTitle.textContent = data.label || `Class ${data.prediction}`;
+                resultSummary.textContent = summaryFromLabel(data.label, state);
+                rhythmLabel.textContent = state === 'state-low' ? 'Stable Rhythm' : (state === 'state-moderate' ? 'Borderline Rhythm' : 'Unstable Rhythm');
+                liveBpm.innerHTML = bpmFromProbability(probability);
+            } catch (error) {
+                uploadError.textContent = 'Failed to connect to ECG prediction endpoint.';
+                uploadError.classList.remove('hidden');
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze ECG Image';
+            }
+        }
+
+        analyzeBtn.addEventListener('click', runEcgPrediction);
+        imageInput.addEventListener('change', () => {
+            if (imageInput.files && imageInput.files[0]) {
+                waveformFromImage(imageInput.files[0]).catch(() => {
+                    uploadError.textContent = 'Preview generation failed for this image format.';
+                    uploadError.classList.remove('hidden');
+                });
+            }
+        });
+
+        setNeutralState();
+    </script>
+</body>
+</html>

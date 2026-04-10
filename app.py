@@ -7,7 +7,7 @@ import pickle
 from pathlib import Path
 from io import BytesIO
 from datetime import datetime
-from database import init_db, seed_database, insert_log, get_recent_logs
+from database import init_db, insert_prediction, get_recent_logs
 
 try:
     import torch
@@ -28,7 +28,6 @@ app = Flask(__name__)
 # 1. Initialize Database
 # ===============================
 init_db()
-seed_database()
 
 # ===============================
 # 2. Load Models & Encoders
@@ -299,6 +298,26 @@ EXPECTED_COLUMNS = [
 def index():
     return render_template('index.html')
 
+
+@app.route('/dashboard')
+def dashboard():
+    return render_template('dashboard.html')
+
+
+@app.route('/cad')
+def cad_page():
+    return render_template('cad.html')
+
+
+@app.route('/ecg')
+def ecg_page():
+    return render_template('ecg.html')
+
+
+@app.route('/health-history')
+def health_history_page():
+    return render_template('health_history.html')
+
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -394,9 +413,31 @@ def predict():
 
         risk_prob = float(risk_prob)
         
-        # Save to logs
+        # Save heart attack prediction logs with vitals.
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        insert_log(patient_name, now_str, age, cholesterol, systolic_bp, diastolic_bp, heart_rate, model_label, risk_prob)
+        insert_prediction(
+            {
+                'patient_name': patient_name,
+                'date': now_str,
+                'prediction_type': 'heart_attack',
+                'model_used': model_label,
+                'risk_percentage': risk_prob,
+                'risk_label': 'High Risk' if risk_prob >= 65 else ('Moderate Risk' if risk_prob >= 35 else 'Lower Risk'),
+                'age': age,
+                'gender': gender,
+                'heart_rate': heart_rate,
+                'cholesterol_level': cholesterol,
+                'systolic_bp': systolic_bp,
+                'diastolic_bp': diastolic_bp,
+                'triglyceride_level': triglyceride,
+                'ldl_level': ldl,
+                'hdl_level': hdl,
+                'glucose_level': data.get('gluc', None),
+                'stress_level': stress_level,
+                'pollution_exposure': pollution,
+                'physical_activity': physical_activity,
+            }
+        )
 
         return jsonify({
             'risk_percentage': round(risk_prob, 2),
@@ -415,8 +456,15 @@ def predict():
 
 @app.route('/history', methods=['GET'])
 def history():
-    logs = get_recent_logs(20) # get up to 20
+    logs = get_recent_logs(20, prediction_type='heart_attack') # get up to 20
     # ensure ascending chronological order for chart
+    logs = logs[::-1]
+    return jsonify(logs)
+
+
+@app.route('/history/full', methods=['GET'])
+def history_full():
+    logs = get_recent_logs(1000, prediction_type=None)
     logs = logs[::-1]
     return jsonify(logs)
 
@@ -449,6 +497,26 @@ def predict_cad_route():
 
         pred, prob = predict_cardio(input_data)
 
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        risk_score = float(prob * 100) if prob is not None else (100.0 if pred == 1 else 0.0)
+        insert_prediction(
+            {
+                'patient_name': 'Patient',
+                'date': now_str,
+                'prediction_type': 'cad',
+                'model_used': 'CAD Model',
+                'risk_percentage': risk_score,
+                'risk_label': 'High CAD Risk' if pred == 1 else 'Lower CAD Risk',
+                'age': input_data['age'],
+                'gender': str(input_data['gender']),
+                'cholesterol_level': input_data['cholesterol'],
+                'systolic_bp': input_data['ap_hi'],
+                'diastolic_bp': input_data['ap_lo'],
+                'glucose_level': input_data['gluc'],
+                'physical_activity': input_data['active'],
+            }
+        )
+
         return jsonify({
             'prediction': pred,
             'risk_label': 'High CAD Risk' if pred == 1 else 'Lower CAD Risk',
@@ -474,6 +542,19 @@ def predict_ecg_route():
             return jsonify({'error': 'Uploaded ECG image is empty.'}), 400
 
         result = predict_ecg_from_image(image_bytes)
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        insert_prediction(
+            {
+                'patient_name': 'Patient',
+                'date': now_str,
+                'prediction_type': 'ecg',
+                'model_used': 'ECG Model',
+                'risk_percentage': result['probability'],
+                'risk_label': result['label'],
+                'extra_json': result['preprocess'],
+            }
+        )
 
         return jsonify({
             'prediction': result['class_index'],

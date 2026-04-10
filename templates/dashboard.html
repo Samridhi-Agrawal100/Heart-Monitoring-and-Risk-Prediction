@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heart Attack Prediction</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/heart.css">
+</head>
+<body>
+    <main class="heart-shell">
+        <p class="topline">System Status: Active Monitoring</p>
+        <h1 class="heart-title">Heart Attack Prediction</h1>
+        <p class="heart-subtitle">Use the same clinical inputs from your original heart-attack form. The model output below is taken directly from the existing `/predict` endpoint.</p>
+
+        <div class="heart-grid">
+            <section class="panel">
+                <div class="panel-head">
+                    <span class="panel-accent" aria-hidden="true"></span>
+                    <h2>Clinical Inputs</h2>
+                </div>
+
+                <form id="prediction-form">
+                    <input type="hidden" id="model" name="model" value="ensemble">
+
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="age">Age</label>
+                            <input type="number" id="age" name="age" value="45" required>
+                        </div>
+                        <div class="field">
+                            <label for="gender">Gender</label>
+                            <select id="gender" name="gender">
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label for="systolic">Upper Blood Pressure</label>
+                            <input type="number" id="systolic" name="systolic" value="120" required>
+                        </div>
+                        <div class="field">
+                            <label for="diastolic">Lower Blood Pressure</label>
+                            <input type="number" id="diastolic" name="diastolic" value="80" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="cholesterol">Cholesterol Level</label>
+                            <input type="number" id="cholesterol" name="cholesterol" value="200" required>
+                        </div>
+                        <div class="field">
+                            <label for="gluc">Blood Sugar Level (Fasting)</label>
+                            <input type="number" id="gluc" name="gluc" value="1" min="1" max="3" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="height">Height (cm)</label>
+                            <input type="number" id="height" name="height" value="170" required>
+                        </div>
+                        <div class="field">
+                            <label for="weight">Weight (kg)</label>
+                            <input type="number" id="weight" name="weight" value="70" required>
+                        </div>
+
+                        <div class="field span-2">
+                            <label for="heart_rate">Heart Rate</label>
+                            <input type="number" id="heart_rate" name="heart_rate" value="64" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="triglyceride">Blood Fat (Triglycerides)</label>
+                            <input type="number" id="triglyceride" name="triglyceride" value="150" required>
+                        </div>
+                        <div class="field">
+                            <label for="ldl">Bad Cholesterol (LDL)</label>
+                            <input type="number" id="ldl" name="ldl" value="100" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="hdl">Good Cholesterol (HDL)</label>
+                            <input type="number" id="hdl" name="hdl" value="50" required>
+                        </div>
+                        <div class="field">
+                            <label for="diet_score">Diet Quality (0-10)</label>
+                            <input type="number" id="diet_score" name="diet_score" value="5" step="0.1" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="stress_level">Stress Level (0-10)</label>
+                            <input type="number" id="stress_level" name="stress_level" value="5" step="0.1" required>
+                        </div>
+                        <div class="field">
+                            <label for="pollution">Air Pollution Exposure</label>
+                            <input type="number" id="pollution" name="pollution" value="0" step="0.1" required>
+                        </div>
+
+                    </div>
+
+                    <div class="toggle-row">
+                        <div class="check-field">
+                            <div class="check-copy">
+                                <strong>Do You Smoke?</strong>
+                                
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="smoking" name="smoking" value="1">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="check-field">
+                            <div class="check-copy">
+                                <strong>Do You Drink Alcohol?</strong>
+                                
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="alcohol-user" name="alcohol_user" value="1">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="check-field">
+                            <div class="check-copy">
+                                <strong>Do You Exercise Regularly?</strong>
+                                
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="physical_activity" name="physical_activity" value="1">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="check-field">
+                            <div class="check-copy">
+                                <strong>Do You Have Diabetes?</strong>
+                                
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="diabetes" name="diabetes" value="1">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="check-field">
+                            <div class="check-copy">
+                                <strong>High Blood Pressure (History)</strong>
+                                
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="hypertension" name="hypertension" value="1">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="check-field">
+                            <div class="check-copy">
+                                <strong>Overweight / Obesity</strong>
+                                
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="obesity" name="obesity" value="1">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="check-field">
+                            <div class="check-copy">
+                                <strong>Is there heart disease in your family?</strong>
+                                
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="family_history" name="family_history" value="1">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="check-field">
+                            <div class="check-copy">
+                                <strong>Have you had a heart attack before?</strong>
+                                
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="heart_attack_history" name="heart_attack_history" value="1">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="check-field span-2">
+                            <div class="check-copy">
+                                <strong>Regular Access to Healthcare</strong>
+                                <span>Healthcare access can influence risk through preventive care and early intervention.</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="healthcare" name="healthcare" value="1" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                </form>
+            </section>
+
+            <aside class="output-card state-neutral" id="result-card">
+                <div class="output-topline"></div>
+                <div class="result-head">
+                    <div id="result-icon" class="alert-icon neutral">?</div>
+                    <div class="confidence">Model Output <strong id="risk-percent">--</strong></div>
+                </div>
+
+                <div class="ring-wrap" aria-label="Heart attack risk probability">
+                    <svg viewBox="0 0 220 220">
+                        <circle cx="110" cy="110" r="84" fill="none" stroke="#edf0f5" stroke-width="12"></circle>
+                        <circle id="risk-ring" class="neutral" cx="110" cy="110" r="84" fill="none" stroke-linecap="round" stroke-width="12" stroke-dasharray="527" stroke-dashoffset="527"></circle>
+                    </svg>
+                    <div class="ring-center">
+                        <div>
+                            <strong id="risk-value">--</strong>
+                            <span id="risk-level">Awaiting Prediction</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 id="result-text" class="result-card-title">Waiting for Model Output</h2>
+                    <p id="result-subtext" class="result-desc">Submit the clinical inputs to see the risk score returned by the existing heart-attack model.</p>
+                </div>
+
+                <button type="submit" form="prediction-form" class="primary-btn neutral" id="analyze-btn">Analyze Heart Attack Risk</button>
+            </aside>
+        </div>
+    </main>
+
+    <script>
+        const resultCard = document.getElementById('result-card');
+        const riskRing = document.getElementById('risk-ring');
+        const riskPercent = document.getElementById('risk-percent');
+        const riskValue = document.getElementById('risk-value');
+        const riskLevel = document.getElementById('risk-level');
+        const resultText = document.getElementById('result-text');
+        const resultSubtext = document.getElementById('result-subtext');
+        const resultIcon = document.getElementById('result-icon');
+        const analyzeBtn = document.getElementById('analyze-btn');
+
+        function setNeutralState() {
+            resultCard.classList.remove('low', 'moderate', 'high');
+            resultCard.classList.add('state-neutral');
+            riskRing.classList.remove('low', 'moderate', 'high');
+            riskRing.classList.add('neutral');
+            analyzeBtn.classList.remove('low', 'moderate', 'high');
+            analyzeBtn.classList.add('neutral');
+            resultIcon.classList.remove('low', 'moderate', 'high');
+            resultIcon.classList.add('neutral');
+            resultIcon.textContent = '?';
+
+            riskPercent.textContent = '--';
+            riskValue.textContent = '--';
+            riskLevel.textContent = 'Awaiting Prediction';
+            resultText.textContent = 'Waiting for Model Output';
+            resultSubtext.textContent = 'Submit the clinical inputs to see the risk score returned by the existing heart-attack model.';
+            riskRing.setAttribute('stroke-dashoffset', '527');
+        }
+
+        function setRiskTheme(probability) {
+            const pct = Number.isFinite(probability) ? probability : 0;
+            const level = pct < 35 ? 'low' : pct < 65 ? 'moderate' : 'high';
+
+            resultCard.classList.remove('state-neutral');
+            resultCard.classList.remove('low', 'moderate', 'high');
+            resultCard.classList.add(level);
+            riskRing.classList.remove('neutral');
+            riskRing.classList.remove('low', 'moderate', 'high');
+            riskRing.classList.add(level);
+            analyzeBtn.classList.remove('neutral');
+            analyzeBtn.classList.remove('low', 'moderate', 'high');
+            analyzeBtn.classList.add(level);
+            resultIcon.classList.remove('neutral');
+            resultIcon.classList.remove('low', 'moderate', 'high');
+            resultIcon.classList.add(level);
+
+            if (level === 'low') {
+                riskLevel.textContent = 'Lower Risk';
+                resultIcon.textContent = '✓';
+                resultText.textContent = 'Lower Heart Attack Probability';
+                resultSubtext.textContent = 'Model output suggests a lower probability. Continue routine monitoring and preventive care.';
+            } else if (level === 'moderate') {
+                riskLevel.textContent = 'Moderate Risk';
+                resultIcon.textContent = '!';
+                resultText.textContent = 'Moderate Heart Attack Probability';
+                resultSubtext.textContent = 'Model output suggests intermediate risk. Review lifestyle and follow-up recommendations.';
+            } else {
+                riskLevel.textContent = 'High Risk';
+                resultIcon.textContent = '!';
+                resultText.textContent = 'High Heart Attack Probability';
+                resultSubtext.textContent = 'Model output indicates elevated risk. Clinical consultation is recommended.';
+            }
+
+            riskValue.textContent = `${Math.round(pct)}%`;
+            riskPercent.textContent = `${Math.round(pct)}%`;
+
+            const circumference = 527;
+            const offset = circumference - (circumference * Math.min(Math.max(pct, 0), 100) / 100);
+            riskRing.setAttribute('stroke-dashoffset', String(offset));
+        }
+
+        setNeutralState();
+
+        document.getElementById('prediction-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = 'Analyzing...';
+
+            const formData = {
+                model: document.getElementById('model').value,
+                age: parseInt(document.getElementById('age').value, 10),
+                gender: document.getElementById('gender').value,
+                systolic: parseFloat(document.getElementById('systolic').value),
+                diastolic: parseFloat(document.getElementById('diastolic').value),
+                cholesterol: parseFloat(document.getElementById('cholesterol').value),
+                gluc: parseInt(document.getElementById('gluc').value, 10),
+                height: parseFloat(document.getElementById('height').value),
+                weight: parseFloat(document.getElementById('weight').value),
+                heart_rate: parseFloat(document.getElementById('heart_rate').value),
+                triglyceride: parseFloat(document.getElementById('triglyceride').value),
+                ldl: parseFloat(document.getElementById('ldl').value),
+                hdl: parseFloat(document.getElementById('hdl').value),
+                diet_score: parseFloat(document.getElementById('diet_score').value),
+                stress_level: parseFloat(document.getElementById('stress_level').value),
+                pollution: parseFloat(document.getElementById('pollution').value),
+                physical_activity: document.getElementById('physical_activity').checked ? 1 : 0,
+                smoking: document.getElementById('smoking').checked ? 1 : 0,
+                alcohol: document.getElementById('alcohol-user').checked ? 1 : 0,
+                diabetes: document.getElementById('diabetes').checked ? 1 : 0,
+                hypertension: document.getElementById('hypertension').checked ? 1 : 0,
+                obesity: document.getElementById('obesity').checked ? 1 : 0,
+                family_history: document.getElementById('family_history').checked ? 1 : 0,
+                heart_attack_history: document.getElementById('heart_attack_history').checked ? 1 : 0,
+                healthcare: document.getElementById('healthcare').checked ? 1 : 0
+            };
+
+            try {
+                const res = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    resultText.textContent = 'Prediction Failed';
+                    resultSubtext.textContent = data.error || 'Prediction failed.';
+                    return;
+                }
+
+                setRiskTheme(data.risk_percentage);
+                resultSubtext.textContent = `Model used: ${data.model_used}. Risk returned by backend: ${data.risk_percentage}%.`;
+            } catch (error) {
+                resultText.textContent = 'Connection Error';
+                resultSubtext.textContent = 'Failed to connect to prediction endpoint.';
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze Heart Attack Risk';
+            }
+        });
+    </script>
+</body>
+</html>

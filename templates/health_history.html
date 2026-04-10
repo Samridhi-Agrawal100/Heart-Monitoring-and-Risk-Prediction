@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health History</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/health_history.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <main class="history-shell">
+        <p class="status-pill">Data Vault: Historical Monitoring</p>
+        <h1 class="hero-title">Health <span>History</span> Timeline</h1>
+        <p class="hero-subtitle">Clean overview of your prediction trend, health movement, and recorded history.</p>
+
+        <section class="charts-grid">
+            <article class="card chart-card">
+                <div class="chart-head">
+                    <h3>Heartbeat Trend</h3>
+                    <span id="chart-meta">Across recorded history</span>
+                </div>
+                <div class="chart-holder">
+                    <canvas id="hrChart"></canvas>
+                </div>
+            </article>
+
+            <article class="card chart-card">
+                <div class="chart-head">
+                    <h3>Prediction Risk Plot</h3>
+                    <span>Latest movement</span>
+                </div>
+                <div class="chart-holder">
+                    <canvas id="riskChart"></canvas>
+                </div>
+            </article>
+        </section>
+
+        <section class="card insights-strip">
+            <div class="insight-top">
+                <h2>Trend Insights</h2>
+                <button id="refresh-btn" class="refresh-btn" type="button">Refresh</button>
+            </div>
+
+            <div id="badge-grid" class="badge-grid">
+                <div class="badge">
+                    <small>Best Day</small>
+                    <strong id="best-date">--</strong>
+                    <p id="best-date-note">Waiting for records.</p>
+                </div>
+                <div class="badge">
+                    <small>Best Risk Score</small>
+                    <strong id="best-risk">--</strong>
+                    <p id="best-risk-note">From all records.</p>
+                </div>
+                <div class="badge">
+                    <small>Average Heart Rate</small>
+                    <strong id="avg-hr">--</strong>
+                    <p id="avg-hr-note">Average BPM.</p>
+                </div>
+                <div class="badge">
+                    <small>Condition Trend</small>
+                    <strong id="trend-status">--</strong>
+                    <p id="trend-note">Based on latest change.</p>
+                </div>
+                <div class="badge">
+                    <small>Last Change Ratio</small>
+                    <strong id="last-change">--</strong>
+                    <p id="last-change-note">Latest vs previous.</p>
+                </div>
+            </div>
+
+        </section>
+
+        <section class="card table-card full-width-table">
+            <div class="table-head">
+                <h3>Previous Records</h3>
+                <span id="record-count">0 entries</span>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Risk %</th>
+                            <th>Heart Rate</th>
+                            <th>BP (S/D)</th>
+                            <th>Cholesterol</th>
+                            <th>Type</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        let hrChartInstance = null;
+        let riskChartInstance = null;
+
+        function formatDate(input) {
+            const d = new Date(input);
+            if (Number.isNaN(d.getTime())) {
+                return input;
+            }
+            return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        function riskClass(risk) {
+            if (risk < 35) return 'risk-low';
+            if (risk < 65) return 'risk-mid';
+            return 'risk-high';
+        }
+
+        function setEmptyState(isEmpty) {
+            const empty = document.getElementById('empty-state');
+            if (!empty) return;
+            if (isEmpty) empty.classList.remove('hidden');
+            else empty.classList.add('hidden');
+        }
+
+        function renderTable(logs) {
+            const tbody = document.getElementById('history-table-body');
+            tbody.innerHTML = '';
+
+            logs.forEach((log) => {
+                const riskValue = Number(log.risk_percentage);
+                const hasRisk = Number.isFinite(riskValue);
+                const hr = Number(log.heart_rate);
+                const hasHr = Number.isFinite(hr);
+                const sys = Number(log.systolic_bp);
+                const dia = Number(log.diastolic_bp);
+                const chol = Number(log.cholesterol_level);
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${formatDate(log.date)}</td>
+                    <td class="${hasRisk ? riskClass(riskValue) : ''}">${hasRisk ? `${riskValue.toFixed(2)}%` : '--'}</td>
+                    <td>${hasHr ? `${hr.toFixed(0)} BPM` : '--'}</td>
+                    <td>${Number.isFinite(sys) && Number.isFinite(dia) ? `${sys.toFixed(0)}/${dia.toFixed(0)}` : '--'}</td>
+                    <td>${Number.isFinite(chol) ? chol.toFixed(0) : '--'}</td>
+                    <td>${log.prediction_type || '--'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderSummary(logs) {
+            const recordCount = document.getElementById('record-count');
+            recordCount.textContent = `${logs.length} ${logs.length === 1 ? 'entry' : 'entries'}`;
+
+            if (!logs.length) {
+                document.getElementById('best-date').textContent = '--';
+                document.getElementById('best-date-note').textContent = 'Waiting for records.';
+                document.getElementById('best-risk').textContent = '--';
+                document.getElementById('avg-hr').textContent = '--';
+                document.getElementById('trend-status').textContent = '--';
+                document.getElementById('trend-note').textContent = 'Calculated from risk movement over time.';
+                document.getElementById('last-change').textContent = '--';
+                document.getElementById('last-change-note').textContent = 'Need at least 2 predictions to compare.';
+                return;
+            }
+
+            const riskRows = logs.filter((row) => Number.isFinite(Number(row.risk_percentage)));
+            const best = riskRows.reduce((acc, cur) => {
+                if (!acc || cur.risk_percentage < acc.risk_percentage) return cur;
+                return acc;
+            }, null);
+
+            const hrRows = logs.filter((row) => Number.isFinite(Number(row.heart_rate)));
+            const avgHr = hrRows.length
+                ? (hrRows.reduce((sum, row) => sum + Number(row.heart_rate), 0) / hrRows.length)
+                : null;
+
+            let trendStatus = 'Stable';
+            let trendNote = 'Need at least 2 predictions to evaluate latest change.';
+            let lastChangeText = '--';
+            let lastChangeNote = 'Need at least 2 predictions to compare.';
+
+            if (riskRows.length >= 2) {
+                const latest = Number(riskRows[riskRows.length - 1].risk_percentage);
+                const previous = Number(riskRows[riskRows.length - 2].risk_percentage);
+                const delta = latest - previous;
+                const improvementPoints = previous - latest;
+                const changeRatio = previous > 0 ? (improvementPoints / previous) * 100 : null;
+
+                if (delta <= -1) {
+                    trendStatus = 'Improving';
+                    trendNote = `Latest risk dropped by ${Math.abs(delta).toFixed(2)} points from previous prediction.`;
+                } else if (delta >= 1) {
+                    trendStatus = 'Worsening';
+                    trendNote = `Latest risk increased by ${delta.toFixed(2)} points from previous prediction.`;
+                } else {
+                    trendStatus = 'Stable';
+                    trendNote = 'Latest risk is nearly unchanged from previous prediction.';
+                }
+
+                if (changeRatio == null) {
+                    lastChangeText = '0%';
+                    lastChangeNote = 'Previous risk was zero, ratio is not meaningful.';
+                } else {
+                    const absRatio = Math.abs(changeRatio).toFixed(2);
+                    if (changeRatio > 0) {
+                        lastChangeText = `+${absRatio}%`;
+                        lastChangeNote = `Improvement ratio vs previous risk (${previous.toFixed(2)}%).`;
+                    } else if (changeRatio < 0) {
+                        lastChangeText = `-${absRatio}%`;
+                        lastChangeNote = `Risk worsened vs previous risk (${previous.toFixed(2)}%).`;
+                    } else {
+                        lastChangeText = '0.00%';
+                        lastChangeNote = 'No risk change from previous prediction.';
+                    }
+                }
+            }
+
+            if (best) {
+                document.getElementById('best-date').textContent = formatDate(best.date);
+                document.getElementById('best-date-note').textContent = `Risk ${Number(best.risk_percentage).toFixed(2)}% on this day.`;
+                document.getElementById('best-risk').textContent = `${Number(best.risk_percentage).toFixed(2)}%`;
+            } else {
+                document.getElementById('best-date').textContent = '--';
+                document.getElementById('best-date-note').textContent = 'No risk score records yet.';
+                document.getElementById('best-risk').textContent = '--';
+            }
+
+            document.getElementById('avg-hr').textContent = avgHr == null ? '--' : `${avgHr.toFixed(0)} BPM`;
+            document.getElementById('trend-status').textContent = trendStatus;
+            document.getElementById('trend-note').textContent = trendNote;
+            document.getElementById('last-change').textContent = lastChangeText;
+            document.getElementById('last-change-note').textContent = lastChangeNote;
+        }
+
+        function renderHrChart(logs) {
+            const heartRows = logs.filter((row) => Number.isFinite(Number(row.heart_rate)));
+            const labels = heartRows.map((row) => formatDate(row.date));
+            const hrValues = heartRows.map((row) => Number(row.heart_rate));
+            const ctx = document.getElementById('hrChart').getContext('2d');
+
+            if (hrChartInstance) {
+                hrChartInstance.destroy();
+            }
+
+            hrChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Heart Rate (BPM)',
+                        data: hrValues,
+                        borderColor: '#0f8d86',
+                        backgroundColor: 'rgba(15, 141, 134, 0.12)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#0f8d86'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'white',
+                            titleColor: '#111827',
+                            bodyColor: '#111827',
+                            borderColor: '#e5e7eb',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#7d7a84', maxRotation: 0, autoSkip: true },
+                            grid: { display: false }
+                        },
+                        y: {
+                            ticks: { color: '#7d7a84' },
+                            grid: { color: 'rgba(17, 24, 39, 0.06)' },
+                            beginAtZero: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderRiskChart(logs) {
+            const riskRows = logs.filter((row) => Number.isFinite(Number(row.risk_percentage)));
+            const labels = riskRows.map((row) => formatDate(row.date));
+            const riskValues = riskRows.map((row) => Number(row.risk_percentage));
+            const ctx = document.getElementById('riskChart').getContext('2d');
+
+            if (riskChartInstance) {
+                riskChartInstance.destroy();
+            }
+
+            riskChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Risk %',
+                        data: riskValues,
+                        borderColor: '#c91035',
+                        backgroundColor: 'rgba(201, 16, 53, 0.12)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#c91035'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'white',
+                            titleColor: '#111827',
+                            bodyColor: '#111827',
+                            borderColor: '#e5e7eb',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#7d7a84', maxRotation: 0, autoSkip: true },
+                            grid: { display: false }
+                        },
+                        y: {
+                            ticks: { color: '#7d7a84' },
+                            grid: { color: 'rgba(17, 24, 39, 0.06)' },
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadHistory() {
+            try {
+                const res = await fetch('/history/full');
+                const logs = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(logs.error || 'Could not load history');
+                }
+
+                setEmptyState(logs.length === 0);
+                renderSummary(logs);
+                renderTable(logs);
+                const hasHeartRateRows = logs.some((row) => Number.isFinite(Number(row.heart_rate)));
+                if (hasHeartRateRows) {
+                    renderHrChart(logs);
+                } else if (hrChartInstance) {
+                    hrChartInstance.destroy();
+                    hrChartInstance = null;
+                }
+
+                const hasRiskRows = logs.some((row) => Number.isFinite(Number(row.risk_percentage)));
+                if (hasRiskRows) {
+                    renderRiskChart(logs);
+                } else if (riskChartInstance) {
+                    riskChartInstance.destroy();
+                    riskChartInstance = null;
+                }
+            } catch (error) {
+                setEmptyState(true);
+            }
+        }
+
+        document.getElementById('refresh-btn').addEventListener('click', loadHistory);
+        loadHistory();
+    </script>
+</body>
+</html>

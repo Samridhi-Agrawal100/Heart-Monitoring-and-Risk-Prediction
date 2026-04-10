@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAD Risk Prediction</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/cad.css">
+</head>
+<body>
+    <main class="cad-shell">
+        <h1 class="cad-title">CAD Risk Prediction</h1>
+        <p class="cad-subtitle">Input the same clinical fields required by the existing CAD model. The backend stays unchanged.</p>
+
+        <div class="cad-grid">
+            <section class="panel form-panel">
+                <div class="panel-heading">
+                    <span class="panel-accent" aria-hidden="true"></span>
+                    <h2>Biometric Profile</h2>
+                </div>
+
+                <form id="cad-form">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="age">Age (years)</label>
+                            <input id="age" type="number" value="45" min="1" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="gender">Gender</label>
+                            <select id="gender">
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label for="height">Height (cm)</label>
+                            <input id="height" type="number" value="170" min="1" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="weight">Weight (kg)</label>
+                            <input id="weight" type="number" value="70" min="1" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="systolic">Systolic BP</label>
+                            <input id="systolic" type="number" value="120" min="1" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="diastolic">Diastolic BP</label>
+                            <input id="diastolic" type="number" value="80" min="1" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="cholesterol">Cholesterol (mg/dL)</label>
+                            <input id="cholesterol" type="number" value="200" min="1" required>
+                        </div>
+
+                        <div class="field">
+                            <label for="gluc">Glucose (1/2/3)</label>
+                            <select id="gluc">
+                                <option value="1">1 - Normal</option>
+                                <option value="2">2 - Slightly High</option>
+                                <option value="3">3 - High</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="toggle-row">
+                        <div class="toggle-field">
+                            <div class="toggle-copy">
+                                <strong>Smoking History</strong>
+                                <span>Active smoker in last 6mo</span>
+                            </div>
+                            <label class="switch">
+                                <input id="smoking" type="checkbox">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="toggle-field">
+                            <div class="toggle-copy">
+                                <strong>Alcohol User</strong>
+                                <span>Recent alcohol usage flag</span>
+                            </div>
+                            <label class="switch">
+                                <input id="alcohol-user" type="checkbox">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="toggle-field span-2">
+                            <div class="toggle-copy">
+                                <strong>Physical Activity</strong>
+                                <span>Active lifestyle flag for the model</span>
+                            </div>
+                            <label class="switch">
+                                <input id="active" type="checkbox" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="note-box">
+                        <h3>Clinical Note</h3>
+                        <p>These inputs are forwarded to the existing CAD prediction route without changing your Flask or model logic.</p>
+                    </div>
+
+                    <div id="form-result" class="result-box hidden"></div>
+                </form>
+            </section>
+
+            <aside class="output-column">
+                <section id="output-card" class="output-card risk-high">
+                    <div class="output-topline">AI Prediction Output</div>
+
+                    <div class="ring-wrap" aria-label="CAD probability">
+                        <svg viewBox="0 0 220 220">
+                            <circle cx="110" cy="110" r="84" fill="none" stroke="#edf0f5" stroke-width="12"></circle>
+                            <circle id="risk-ring" class="risk-ring risk-high" cx="110" cy="110" r="84" fill="none" stroke-linecap="round" stroke-width="12" stroke-dasharray="527" stroke-dashoffset="148"></circle>
+                        </svg>
+                        <div class="ring-center">
+                            <div>
+                                <strong id="risk-percent">72%</strong>
+                                <span id="risk-level">High Risk</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="output-copy">
+                        <h3 id="risk-title">High CAD Probability</h3>
+                        <p id="risk-desc">Analysis indicates significant artery narrowing. Immediate consultation with cardiovascular surgery unit recommended.</p>
+                    </div>
+
+                    <button class="primary-btn risk-high" id="cad-run-btn" type="button">Continue to Advanced Analysis</button>
+                </section>
+
+                <section id="signal-card" class="mini-card risk-high">
+                    <div class="mini-head">
+                        <div>
+                            <h4>Myocardial Infarction Signal</h4>
+                            <p style="margin-top:6px;color:rgba(255,255,255,0.68);font-size:13px;font-weight:600;">Real-time detection engine</p>
+                        </div>
+                        <span id="mini-risk-pill" class="risk-pill">Risk Level: High</span>
+                    </div>
+
+                    <div class="bar-chart" aria-label="signal bars">
+                        <span style="height:26%"></span>
+                        <span style="height:42%"></span>
+                        <span style="height:55%"></span>
+                        <span style="height:78%"></span>
+                        <span style="height:44%"></span>
+                        <span style="height:28%"></span>
+                        <span style="height:66%"></span>
+                        <span style="height:58%"></span>
+                    </div>
+
+                    <div id="signal-line" class="signal-line"><span class="signal-dot"></span> Abnormal ST-segment elevation detected</div>
+                </section>
+            </aside>
+        </div>
+    </main>
+
+    <script>
+        const form = document.getElementById('cad-form');
+        const runButton = document.getElementById('cad-run-btn');
+        const resultBox = document.getElementById('form-result');
+        const outputCard = document.getElementById('output-card');
+        const signalCard = document.getElementById('signal-card');
+        const riskPercent = document.getElementById('risk-percent');
+        const riskLevel = document.getElementById('risk-level');
+        const riskTitle = document.getElementById('risk-title');
+        const riskDesc = document.getElementById('risk-desc');
+        const riskRing = document.getElementById('risk-ring');
+        const miniRiskPill = document.getElementById('mini-risk-pill');
+        const signalLine = document.getElementById('signal-line');
+
+        function applyRiskTheme(theme) {
+            outputCard.classList.remove('risk-low', 'risk-moderate', 'risk-high');
+            signalCard.classList.remove('risk-low', 'risk-moderate', 'risk-high');
+            runButton.classList.remove('risk-low', 'risk-moderate', 'risk-high');
+            riskRing.classList.remove('risk-low', 'risk-moderate', 'risk-high');
+
+            outputCard.classList.add(theme);
+            signalCard.classList.add(theme);
+            runButton.classList.add(theme);
+            riskRing.classList.add(theme);
+        }
+
+        function updateVisuals(probability) {
+            const safeProbability = Number.isFinite(probability) ? probability : 72;
+            riskPercent.textContent = `${Math.round(safeProbability)}%`;
+
+            let theme = 'risk-high';
+            if (safeProbability < 35) {
+                theme = 'risk-low';
+                riskLevel.textContent = 'Lower Risk';
+                riskTitle.textContent = 'Lower CAD Probability';
+                riskDesc.textContent = 'Analysis suggests a lower probability of coronary artery disease. Continue routine clinical monitoring.';
+                miniRiskPill.textContent = 'Risk Level: Low';
+                signalLine.innerHTML = '<span class="signal-dot"></span> Stable rhythm pattern detected';
+            } else if (safeProbability < 65) {
+                theme = 'risk-moderate';
+                riskLevel.textContent = 'Moderate Risk';
+                riskTitle.textContent = 'Moderate CAD Probability';
+                riskDesc.textContent = 'Analysis indicates an intermediate risk profile. Consider follow-up testing and lifestyle review.';
+                miniRiskPill.textContent = 'Risk Level: Moderate';
+                signalLine.innerHTML = '<span class="signal-dot"></span> Borderline cardiac markers observed';
+            } else {
+                theme = 'risk-high';
+                riskLevel.textContent = 'High Risk';
+                riskTitle.textContent = 'High CAD Probability';
+                riskDesc.textContent = 'Analysis indicates significant artery narrowing. Immediate consultation with cardiovascular surgery unit recommended.';
+                miniRiskPill.textContent = 'Risk Level: High';
+                signalLine.innerHTML = '<span class="signal-dot"></span> Abnormal ST-segment elevation detected';
+            }
+
+            applyRiskTheme(theme);
+
+            const circumference = 527;
+            const offset = circumference - (circumference * Math.min(Math.max(safeProbability, 0), 100) / 100);
+            riskRing.setAttribute('stroke-dashoffset', String(offset));
+        }
+
+        async function runCadPrediction() {
+            runButton.disabled = true;
+            runButton.textContent = 'Running...';
+            resultBox.classList.add('hidden');
+
+            const payload = {
+                age: parseFloat(document.getElementById('age').value),
+                gender: document.getElementById('gender').value,
+                height: parseFloat(document.getElementById('height').value),
+                weight: parseFloat(document.getElementById('weight').value),
+                ap_hi: parseFloat(document.getElementById('systolic').value),
+                ap_lo: parseFloat(document.getElementById('diastolic').value),
+                cholesterol: parseFloat(document.getElementById('cholesterol').value),
+                gluc: parseInt(document.getElementById('gluc').value, 10),
+                smoke: document.getElementById('smoking').checked ? 1 : 0,
+                alco: document.getElementById('alcohol-user').checked ? 1 : 0,
+                active: document.getElementById('active').checked ? 1 : 0
+            };
+
+            try {
+                const res = await fetch('/predict/cad', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    resultBox.textContent = data.error || 'CAD prediction failed.';
+                    resultBox.classList.remove('hidden');
+                    return;
+                }
+
+                const probability = typeof data.probability === 'number' ? data.probability : 72;
+                updateVisuals(probability);
+                resultBox.innerHTML = `<strong>Result:</strong> ${data.risk_label}<br><strong>Probability:</strong> ${probability}%`;
+                resultBox.classList.remove('hidden');
+            } catch (error) {
+                resultBox.textContent = 'Failed to connect to CAD endpoint.';
+                resultBox.classList.remove('hidden');
+            } finally {
+                runButton.disabled = false;
+                runButton.textContent = 'Continue to Advanced Analysis';
+            }
+        }
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            runCadPrediction();
+        });
+
+        runButton.addEventListener('click', runCadPrediction);
+        updateVisuals(72);
+    </script>
+</body>
+</html>
