@@ -1,228 +1,248 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Digital Twin AI</title>
-
-  <!-- CSS -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apothecary Heart Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-
 <body>
+    <div class="topbar">
+        <div class="brand">heart assesment</div>
+        <div class="topbar-right">
+            <button class="upload-btn" type="button" onclick="document.getElementById('upload-modal').classList.add('active')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                Upload Parameters
+            </button>
+            <div class="model-select-wrap">
+                <span>SELECTED MODEL</span>
+                <select id="model-select-top" onchange="document.getElementById('model').value = this.value">
+                    <option value="rf">Random Forest Classifier (v4.2)</option>
+                    <option value="xgb">XGBoost Classifier</option>
+                    <option value="svm">Support Vector Machine</option>
+                    <option value="logistic">Logistic Regression</option>
+                    <option value="decision_tree">Decision Tree</option>
+                </select>
+            </div>
+        </div>
+    </div>
 
-<header class="site-header">
-  <div class="brand">
-    <img src="{{ url_for('static', filename='heart.png') }}" class="logo">
-    <h1>Digital Twin AI</h1>
-  </div>
-  <!-- <div class="brand">
-    <div class="heart-mark"></div>
-    <h1>Digital Twin AI</h1>
-  </div> -->
+    <main class="main-content">
+        <header class="dashboard-header">
+            <span class="dash-sup"></span>
+            <h1>Your heart is steady.</h1>
+            <p>Reviewing your physiological metrics from the last 10 days. We've noticed a stabilizing trend in your resting heart rate and arterial pressure consistency.</p>
+        </header>
 
-  <nav>
-    <a href="#" class="nav-link active" id="nav-params">Parameters</a>
-    <a href="#" class="nav-link" id="nav-results">Results</a>
-  </nav>
-</header>
+        <div class="cards-layout">
+            <div class="left-col">
+                <div class="glass-card chart-card" style="margin-bottom: 2rem;">
+                    <div class="chart-header">
+                        <div>
+                            <h3>Heart Attack Risk Trend</h3>
+                            <div class="chart-subtitle">Predictive Probability over 10 Days</div>
+                        </div>
+                        <div style="color: var(--danger); font-size: 0.8rem; font-weight: 600; display:flex; align-items:center; gap:5px;">
+                            <span style="display:inline-block; width:10px; height:10px; background:var(--danger)"></span> Risk %
+                        </div>
+                    </div>
+                    <canvas id="riskChart"></canvas>
+                </div>
 
+                <div class="glass-card chart-card">
+                    <div class="chart-header">
+                        <div>
+                            <h3>Vital Signs Trajectory</h3>
+                            <div class="chart-subtitle">Multivariate comparison of biomarkers</div>
+                        </div>
+                        <div style="font-size: 0.8rem; font-weight: 600; display:flex; align-items:center; gap:12px;">
+                            <span style="color:var(--warning);display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:10px;height:10px;background:var(--warning)"></span> CHOL</span>
+                            <span style="color:#2563eb;display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:10px;height:10px;background:#2563eb"></span> SYS BP</span>
+                            <span style="color:var(--success);display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:10px;height:10px;background:var(--success)"></span> DIA BP</span>
+                        </div>
+                    </div>
+                    <canvas id="vitalsChart"></canvas>
+                </div>
+            </div>
 
-<main class="container">
+            <div class="right-col" style="display:flex; flex-direction: column; gap:2rem;">
+                <div class="glass-card">
+                    <h3 style="font-size:0.85rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:1.5rem;">Recent Parameters (10D)</h3>
+                    <table class="data-table" id="logs-table">
+                        <thead>
+                            <tr>
+                                <th>DATE</th>
+                                <th>RISK %</th>
+                                <th>CHOL</th>
+                                <th>BP (S/D)</th>
+                                <th>ACTION</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- injected via js -->
+                        </tbody>
+                    </table>
+                </div>
 
-<!-- PARAMETERS -->
-<section class="left-column card" id="params-card">
+                <div class="glass-card">
+                     <h3 style="font-size:0.85rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:1rem;">Avg. Resting Heart Rate</h3>
+                     <div class="metric-number">
+                         <span id="avg-hr">64</span> <span class="metric-unit">BPM</span>
+                     </div>
+                     <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.6;">
+                         Optimal performance. Your cardiovascular efficiency has stabilized recently across your clinical telemetry.
+                     </p>
+                     <div style="margin-top: 1.5rem; height: 8px; border-radius:4px; background: #eee; display:flex;">
+                         <div style="width: 70%; background: var(--text-muted); border-radius: 4px 0 0 4px;"></div>
+                         <div style="width: 30%; background: #E5E7EB; border-radius: 0 4px 4px 0;"></div>
+                     </div>
+                </div>
+            </div>
+        </div>
+    </main>
 
-<h2>Enter patient parameters</h2>
-<p class="helper">Provide clinical inputs to compute risk.</p>
+    <!-- Modal for Parameters Upload -->
+    <div id="upload-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="modal-close" type="button" onclick="document.getElementById('upload-modal').classList.remove('active')">&times;</button>
+            <h3 style="font-family:'Lora',serif; color:var(--text-dark);">Upload Parameters</h3>
+            
+            <form id="prediction-form">
+                <input type="hidden" id="model" name="model" value="rf">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="age">Age</label>
+                        <input type="number" id="age" name="age" value="45" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="gender">Gender</label>
+                        <select id="gender" name="gender">
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                        </select>
+                    </div>
+                </div>
 
-<form id="params-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="systolic">Systolic BP</label>
+                        <input type="number" id="systolic" name="systolic" value="120" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="diastolic">Diastolic BP</label>
+                        <input type="number" id="diastolic" name="diastolic" value="80" required>
+                    </div>
+                </div>
 
-<div class="grid">
+                <div class="form-row">
+                     <div class="form-group">
+                        <label for="cholesterol">Cholesterol</label>
+                        <input type="number" id="cholesterol" name="cholesterol" value="200" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="heart_rate">Heart Rate (bpm)</label>
+                        <input type="number" id="heart_rate" name="heart_rate" value="64" required>
+                    </div>
+                </div>
 
-<label>
-Age
-<input type="number" name="age" min="0" value="54">
-</label>
+                <div class="form-row">
+                     <div class="form-group">
+                        <label for="triglyceride">Triglyceride Level</label>
+                        <input type="number" id="triglyceride" name="triglyceride" value="150" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="ldl">LDL Level</label>
+                        <input type="number" id="ldl" name="ldl" value="100" required>
+                    </div>
+                </div>
 
-<label>
-Sex
-<select name="sex">
-<option value="1">Male</option>
-<option value="0">Female</option>
-</select>
-</label>
+                <div class="form-row">
+                     <div class="form-group">
+                        <label for="hdl">HDL Level</label>
+                        <input type="number" id="hdl" name="hdl" value="50" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="diet_score">Diet Score (0-10)</label>
+                        <input type="number" id="diet_score" name="diet_score" value="5" step="0.1" required>
+                    </div>
+                </div>
 
-<label>
-cp
-<select name="cp">
-<option value="1">Typical angina</option>
-<option value="2">Atypical angina</option>
-<option value="3">Non-anginal</option>
-<option value="4">Asymptomatic</option>
-</select>
-</label>
+                <div class="form-row">
+                     <div class="form-group">
+                        <label for="stress_level">Stress Level (0-10)</label>
+                        <input type="number" id="stress_level" name="stress_level" value="5" step="0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="pollution">Air Pollution Exp.</label>
+                        <input type="number" id="pollution" name="pollution" value="0" step="0.1" required>
+                    </div>
+                </div>
 
-<label>
-trestbps
-<input type="number" name="trestbps" value="130">
-</label>
+                <div class="form-row">
+                     <div class="form-group">
+                        <label for="alcohol">Alcohol Consumption</label>
+                        <input type="number" id="alcohol" name="alcohol" value="0" step="0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="physical_activity">Physical Activity</label>
+                        <input type="number" id="physical_activity" name="physical_activity" value="0" step="0.1" required>
+                    </div>
+                </div>
 
-<label>
-chol
-<input type="number" name="chol" value="250">
-</label>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="smoking" name="smoking" value="1">
+                        <label for="smoking">Smoking History</label>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="diabetes" name="diabetes" value="1">
+                        <label for="diabetes">Diabetes Patient</label>
+                    </div>
+                </div>
 
-<label>
-fbs
-<select name="fbs">
-<option value="1">&gt;120 mg/dl</option>
-<option value="0">&le;120 mg/dl</option>
-</select>
-</label>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="hypertension" name="hypertension" value="1">
+                        <label for="hypertension">Hypertension</label>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="obesity" name="obesity" value="1">
+                        <label for="obesity">Obesity</label>
+                    </div>
+                </div>
 
-<label>
-thalach
-<input type="number" name="thalach" value="150">
-</label>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="family_history" name="family_history" value="1">
+                        <label for="family_history">Family History</label>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="heart_attack_history" name="heart_attack_history" value="1">
+                        <label for="heart_attack_history">Heart Attack History</label>
+                    </div>
+                </div>
 
-<label>
-exang
-<select name="exang">
-<option value="1">Yes</option>
-<option value="0">No</option>
-</select>
-</label>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="healthcare" name="healthcare" value="1" checked>
+                        <label for="healthcare">Healthcare Access</label>
+                    </div>
+                    <div class="form-group"></div>
+                </div>
 
-<label>
-oldpeak
-<input type="number" step="0.1" name="oldpeak" value="1.0">
-</label>
+                <button type="submit" class="submit-btn" id="analyze-btn">Analyze Risk</button>
 
-<label>
-slope
-<select name="slope">
-<option value="1">Upsloping</option>
-<option value="2">Flat</option>
-<option value="3">Downsloping</option>
-</select>
-</label>
-
-<label>
-ca
-<select name="ca">
-<option value="0">0</option>
-<option value="1">1</option>
-<option value="2">2</option>
-<option value="3">3</option>
-</select>
-</label>
-
-<label>
-thal
-<select name="thal">
-<option value="3">Normal</option>
-<option value="6">Fixed defect</option>
-<option value="7">Reversible defect</option>
-</select>
-</label>
-
-</div>
-
-
-<div class="form-actions">
-
-<button type="button" id="reset-btn" class="btn secondary">
-Reset
-</button>
-
-<div class="model-buttons">
-
-<button type="button" class="btn model-btn active" data-model="rf">
-Random Forest
-</button>
-
-<button type="button" class="btn model-btn" data-model="ann">
-ANN
-</button>
-
-</div>
-
-<button type="submit" class="btn primary">
-Run Prediction
-</button>
-
-</div>
-
-</form>
-
-</section>
-
-
-<!-- RIGHT PANEL -->
-<section class="right-column">
-
-<div class="card model-preview">
-<h3>Model info</h3>
-<p id="model-desc">Random Forest — ensemble tree model</p>
-
-<div class="preview-mini">
-Preview risk: <span id="preview-risk">—</span>
-</div>
-</div>
-
-<div class="card heart-art">
-  <img src="{{ url_for('static', filename='heart.png') }}" class="heart-frame">
-</div>
-
-</section>
-
-
-<!-- RESULTS -->
-<section id="results" class="results-screen hidden card">
-
-<div class="results-left">
-
-<h2>Prediction Result</h2>
-
-<div class="result-ring" id="result-ring">
-<div class="percentage" id="risk-percent">--%</div>
-</div>
-
-<div class="risk-badge" id="risk-badge">—</div>
-
-<div class="result-actions">
-<button class="btn secondary" id="back-btn">Back to parameters</button>
-</div>
-
-</div>
-
-
-<div class="results-right">
-
-<h3>Input parameters</h3>
-
-<canvas id="paramsChart" height="300"></canvas>
-
-<table class="raw-values" id="raw-values"></table>
-
-</div>
-
-</section>
-
-</main>
-
-
-<footer class="site-footer">
-<small>
-Values shown are for demonstration; consult a clinician for medical interpretation.
-</small>
-</footer>
-
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="{{ url_for('static', filename='app.js') }}"></script>
-
+                <div id="prediction-result" class="hidden">
+                    <h4 id="result-text"></h4>
+                    <p id="result-subtext" style="color:var(--text-muted); font-size:0.9rem;"></p>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script src="/static/script.js"></script>
 </body>
 </html>
