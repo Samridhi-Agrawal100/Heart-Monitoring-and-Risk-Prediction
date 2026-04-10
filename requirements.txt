@@ -4,3 +4,8 @@ scikit-learn
 joblib
 xgboost
 numpy
+openpyxl
+Pillow
+torch
+torchvision
+timm

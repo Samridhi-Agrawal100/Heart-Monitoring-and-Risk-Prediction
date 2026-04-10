@@ -77,7 +77,7 @@ def seed_database():
         
         for i in range(10):
             date_str = (base_date + timedelta(days=i)).strftime("%Y-%m-%d %H:%M:%S")
-            insert_log("Siddh", date_str, 45, cholesterol, sys_bp, dia_bp, hr, "Logistic Regression", round(risk, 2))
+            insert_log("Siddh", date_str, 45, cholesterol, sys_bp, dia_bp, hr, "Ensemble (RF + XGBoost)", round(risk, 2))
             
             # Simulate health improvement
             cholesterol -= random.uniform(2, 6)

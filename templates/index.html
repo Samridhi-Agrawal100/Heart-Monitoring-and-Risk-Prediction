@@ -19,11 +19,9 @@
             <div class="model-select-wrap">
                 <span>SELECTED MODEL</span>
                 <select id="model-select-top" onchange="document.getElementById('model').value = this.value">
-                    <option value="rf">Random Forest Classifier (v4.2)</option>
+                    <option value="ensemble" selected>Ensemble: Random Forest + XGBoost</option>
+                    <option value="rf">Random Forest Classifier</option>
                     <option value="xgb">XGBoost Classifier</option>
-                    <option value="svm">Support Vector Machine</option>
-                    <option value="logistic">Logistic Regression</option>
-                    <option value="decision_tree">Decision Tree</option>
                 </select>
             </div>
         </div>
@@ -101,6 +99,23 @@
                 </div>
             </div>
         </div>
+
+        <section style="margin-top: 2rem;">
+            <div class="glass-card">
+                <h3 style="font-size:1.1rem; margin-bottom: 1rem;">ECG Model Quick Test</h3>
+                <form id="ecg-form" enctype="multipart/form-data">
+                    <div class="form-group" style="margin-bottom:1rem;">
+                        <label for="ecg-image">Upload ECG Image</label>
+                        <input id="ecg-image" type="file" accept="image/*" required>
+                    </div>
+                    <button type="submit" class="submit-btn">Run ECG Prediction</button>
+                    <div id="ecg-result" class="hidden" style="margin-top:1rem; border:1px solid var(--card-border); border-radius:8px; padding:0.8rem;"></div>
+                </form>
+                <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.8rem;">
+                    This is a basic connectivity check UI. Final UI can be redesigned later.
+                </p>
+            </div>
+        </section>
     </main>
 
     <!-- Modal for Parameters Upload -->
@@ -110,7 +125,7 @@
             <h3 style="font-family:'Lora',serif; color:var(--text-dark);">Upload Parameters</h3>
             
             <form id="prediction-form">
-                <input type="hidden" id="model" name="model" value="rf">
+                <input type="hidden" id="model" name="model" value="ensemble">
                 
                 <div class="form-row">
                     <div class="form-group">
@@ -143,9 +158,28 @@
                         <input type="number" id="cholesterol" name="cholesterol" value="200" required>
                     </div>
                     <div class="form-group">
+                        <label for="gluc">Glucose (CAD: 1/2/3)</label>
+                        <input type="number" id="gluc" name="gluc" value="1" min="1" max="3" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="height">Height (cm)</label>
+                        <input type="number" id="height" name="height" value="170" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="weight">Weight (kg)</label>
+                        <input type="number" id="weight" name="weight" value="70" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
                         <label for="heart_rate">Heart Rate (bpm)</label>
                         <input type="number" id="heart_rate" name="heart_rate" value="64" required>
                     </div>
+                    <div class="form-group"></div>
                 </div>
 
                 <div class="form-row">
@@ -182,14 +216,11 @@
                 </div>
 
                 <div class="form-row">
-                     <div class="form-group">
-                        <label for="alcohol">Alcohol Consumption</label>
-                        <input type="number" id="alcohol" name="alcohol" value="0" step="0.1" required>
-                    </div>
                     <div class="form-group">
                         <label for="physical_activity">Physical Activity</label>
                         <input type="number" id="physical_activity" name="physical_activity" value="0" step="0.1" required>
                     </div>
+                    <div class="form-group"></div>
                 </div>
 
                 <div class="form-row">
@@ -198,9 +229,17 @@
                         <label for="smoking">Smoking History</label>
                     </div>
                     <div class="form-group checkbox-group">
+                        <input type="checkbox" id="alcohol-user" name="alcohol_user" value="1">
+                        <label for="alcohol-user">Alcohol User</label>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
                         <input type="checkbox" id="diabetes" name="diabetes" value="1">
                         <label for="diabetes">Diabetes Patient</label>
                     </div>
+                    <div class="form-group"></div>
                 </div>
 
                 <div class="form-row">
@@ -233,11 +272,22 @@
                     <div class="form-group"></div>
                 </div>
 
-                <button type="submit" class="submit-btn" id="analyze-btn">Analyze Risk</button>
+                <div class="form-row" style="margin-top:1rem;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <button type="submit" class="submit-btn" id="analyze-btn" style="margin-top:0;">Analyze Heart Attack Risk</button>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <button type="button" class="submit-btn" id="cad-btn" style="margin-top:0;">Run CAD Prediction</button>
+                    </div>
+                </div>
 
                 <div id="prediction-result" class="hidden">
                     <h4 id="result-text"></h4>
                     <p id="result-subtext" style="color:var(--text-muted); font-size:0.9rem;"></p>
+                </div>
+                <div id="cad-result" class="hidden" style="padding: 1.5rem; margin-top: 1rem; border-radius: 8px; text-align: center; border: 1px solid var(--card-border);">
+                    <h4 id="cad-result-text"></h4>
+                    <p id="cad-result-subtext" style="color:var(--text-muted); font-size:0.9rem;"></p>
                 </div>
             </form>
         </div>

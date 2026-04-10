@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
             diet_score: parseFloat(document.getElementById('diet_score').value),
             stress_level: parseFloat(document.getElementById('stress_level').value),
             pollution: parseFloat(document.getElementById('pollution').value),
-            alcohol: parseFloat(document.getElementById('alcohol').value),
+            alcohol: document.getElementById('alcohol-user').checked ? 1 : 0,
             physical_activity: parseFloat(document.getElementById('physical_activity').value),
             family_history: document.getElementById('family_history').checked ? 1 : 0,
             heart_attack_history: document.getElementById('heart_attack_history').checked ? 1 : 0,
@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             
             if (res.ok) {
-                showResult(data.risk_percentage, data.model_used);
+                showResult(data.risk_percentage, data.model_used, data.ensemble_breakdown);
                 fetchHistory();
                 
                 // Automatically close modal after 1.5s
@@ -63,9 +63,97 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.disabled = false;
         }
     });
+
+    const cadButton = document.getElementById('cad-btn');
+    if (cadButton) {
+        cadButton.addEventListener('click', async () => {
+            const payload = {
+                age: parseFloat(document.getElementById('age').value),
+                gender: document.getElementById('gender').value,
+                height: parseFloat(document.getElementById('height').value),
+                weight: parseFloat(document.getElementById('weight').value),
+                ap_hi: parseFloat(document.getElementById('systolic').value),
+                ap_lo: parseFloat(document.getElementById('diastolic').value),
+                cholesterol: parseInt(document.getElementById('cholesterol').value, 10),
+                gluc: parseInt(document.getElementById('gluc').value, 10),
+                smoke: document.getElementById('smoking').checked ? 1 : 0,
+                alco: document.getElementById('alcohol-user').checked ? 1 : 0,
+                active: parseFloat(document.getElementById('physical_activity').value) > 0 ? 1 : 0
+            };
+
+            const resultBox = document.getElementById('cad-result');
+            const resultText = document.getElementById('cad-result-text');
+            const resultSub = document.getElementById('cad-result-subtext');
+            resultBox.classList.remove('hidden');
+            resultText.textContent = 'Running CAD prediction...';
+            resultSub.textContent = '';
+
+            cadButton.disabled = true;
+            cadButton.textContent = 'Running...';
+
+            try {
+                const res = await fetch('/predict/cad', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    resultText.textContent = `Error: ${data.error || 'CAD prediction failed.'}`;
+                    return;
+                }
+
+                resultText.textContent = `CAD Result: ${data.risk_label}`;
+                resultSub.textContent = `Probability: ${data.probability ?? 'N/A'}%`;
+            } catch (err) {
+                resultText.textContent = 'Error: Failed to connect to CAD endpoint.';
+            } finally {
+                cadButton.disabled = false;
+                cadButton.textContent = 'Run CAD Prediction';
+            }
+        });
+    }
+
+    const ecgForm = document.getElementById('ecg-form');
+    if (ecgForm) {
+        ecgForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const fileInput = document.getElementById('ecg-image');
+            const resultBox = document.getElementById('ecg-result');
+            resultBox.classList.remove('hidden');
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                resultBox.textContent = 'Error: Please choose an ECG image file.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('ecg_image', fileInput.files[0]);
+            resultBox.textContent = 'Running ECG prediction...';
+
+            try {
+                const res = await fetch('/predict/ecg', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    resultBox.textContent = `Error: ${data.error || 'ECG prediction failed.'}`;
+                    return;
+                }
+
+                resultBox.textContent = `Result: ${data.label} (class ${data.prediction}) | Confidence: ${data.probability ?? 'N/A'}% | Preprocess: ${data.preprocess}`;
+            } catch (err) {
+                resultBox.textContent = 'Error: Failed to connect to ECG endpoint.';
+            }
+        });
+    }
 });
 
-function showResult(riskPercentage, modelUsed) {
+function showResult(riskPercentage, modelUsed, ensembleBreakdown) {
     const resBox = document.getElementById('prediction-result');
     const resText = document.getElementById('result-text');
     const resSub = document.getElementById('result-subtext');
@@ -87,7 +175,12 @@ function showResult(riskPercentage, modelUsed) {
     }
 
     resText.textContent = `Risk Probability: ${riskPercentage}%`;
-    resSub.textContent = `Processed with ${modelUsed}`;
+
+    if (ensembleBreakdown && ensembleBreakdown.method === 'average' && ensembleBreakdown.rf != null && ensembleBreakdown.xgb != null) {
+        resSub.textContent = `${modelUsed} | RF: ${ensembleBreakdown.rf}% | XGB: ${ensembleBreakdown.xgb}%`;
+    } else {
+        resSub.textContent = `Processed with ${modelUsed}`;
+    }
 }
 
 let riskChartInstance = null;
