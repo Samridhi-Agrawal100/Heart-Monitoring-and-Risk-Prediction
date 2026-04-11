@@ -192,6 +192,24 @@ def load_ecg_pytorch_model():
         return None, None, None, 'ecg_model.pth not found in project directories.'
 
     try:
+        label_map = load_ecg_labels(ECG_LABELS_PATH)
+        checkpoint = torch.load(ECG_PTH_PATH, map_location='cpu')
+
+        # Support checkpoints saved as raw state_dict or wrapped dicts.
+        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        else:
+            state_dict = checkpoint
+
+        if not isinstance(state_dict, dict):
+            return None, None, None, 'Invalid ECG checkpoint format: expected a state_dict.'
+
+        # Remove DataParallel prefix if present.
+        cleaned_state_dict = {}
+        for key, value in state_dict.items():
+            new_key = key[7:] if key.startswith('module.') else key
+            cleaned_state_dict[new_key] = value
+
         backbone = timm.create_model(
             'maxvit_base_tf_384.in1k',
             pretrained=False,
@@ -199,11 +217,23 @@ def load_ecg_pytorch_model():
             global_pool=''
         )
 
-        model = CustomMaxViT(backbone, 768, 4)
-        model.load_state_dict(torch.load(ECG_PTH_PATH, map_location='cpu'))
+        channels = getattr(backbone, 'num_features', 768)
+        num_classes = len(label_map) if label_map else 4
+        if 'head.weight' in cleaned_state_dict and hasattr(cleaned_state_dict['head.weight'], 'shape'):
+            num_classes = int(cleaned_state_dict['head.weight'].shape[0])
+
+        model = CustomMaxViT(backbone, channels, num_classes)
+        missing, unexpected = model.load_state_dict(cleaned_state_dict, strict=False)
+        if unexpected:
+            print(f"Warning: Unexpected ECG checkpoint keys: {unexpected}")
+        if missing:
+            print(f"Warning: Missing ECG checkpoint keys: {missing}")
+
         model.eval()
 
-        label_map = load_ecg_labels(ECG_LABELS_PATH)
+        if not label_map:
+            label_map = {index: str(index) for index in range(num_classes)}
+
         transform_pipeline = transforms.Compose([
             transforms.Resize((384, 384)),
             transforms.ToTensor(),
@@ -284,15 +314,16 @@ def parse_groq_explanation(raw_text):
         if line and line[0].isdigit() and '.' in line[:3]:
             # Remove number, dot, and asterisks from the line
             clean = line.split('.', 1)[1].strip() if '.' in line else line
-            clean = clean.replace('**', '').strip()
+            clean = clean.replace('**', '').replace('*', '').strip()
             if clean:
                 recommendations.append(clean)
         elif line and not any(line.startswith(str(i) + '.') for i in range(1, 10)):
             # This is part of the summary
-            summary_lines.append(line)
+            summary_lines.append(line.replace('**', '').replace('*', '').strip())
     
     # First 2-3 sentences for summary
     summary = ' '.join(summary_lines[:100]).strip()  # Take first part, limit length
+    summary = ' '.join(summary.split())
     
     return {
         'summary': summary[:300],  # Keep summary reasonably short
@@ -305,6 +336,9 @@ def build_cad_context_for_llm(input_data, pred, prob):
     pulse_pressure = input_data['ap_hi'] - input_data['ap_lo']
     bp_ratio = input_data['ap_hi'] / input_data['ap_lo'] if input_data['ap_lo'] else None
 
+    smoking_status = 'Yes' if int(input_data.get('smoke_raw', input_data.get('smoke', 0))) else 'No'
+    alcohol_status = 'Yes' if int(input_data.get('alco_raw', input_data.get('alco', 0))) else 'No'
+
     return {
         'age': input_data['age'],
         'gender': 'Male' if input_data['gender'] == 1 else 'Female',
@@ -316,13 +350,41 @@ def build_cad_context_for_llm(input_data, pred, prob):
         'pulse_pressure': round(pulse_pressure, 2),
         'bp_ratio': round(bp_ratio, 2) if bp_ratio is not None else None,
         'cholesterol': input_data['cholesterol'],
+        'cholesterol_raw': input_data.get('cholesterol_raw'),
         'gluc': input_data['gluc'],
+        'gluc_raw': input_data.get('gluc_raw'),
         'smoke': input_data['smoke'],
         'alco': input_data['alco'],
+        'smoking_status': smoking_status,
+        'alcohol_status': alcohol_status,
         'active': input_data['active'],
         'prediction': int(pred),
         'probability': round(float(prob) * 100, 2) if prob is not None else None,
+        'target_bp': '<120/80 mmHg',
+        'target_cholesterol': '<200 mg/dL (model level 1)',
+        'target_glucose': '<100 mg/dL fasting (model level 1)',
+        'target_activity': 'at least 150 min/week moderate activity',
     }
+
+
+def build_cad_recommendations(context):
+    recommendations = []
+
+    if context.get('smoking_status') == 'Yes':
+        recommendations.append('Stop smoking to reduce CAD risk.')
+
+    if context.get('alcohol_status') == 'Yes':
+        recommendations.append('Limit alcohol use to minimize its negative impact.')
+
+    recommendations.extend([
+        f'Keep blood pressure near {context.get("target_bp")} (current {context.get("ap_hi")}/{context.get("ap_lo")}).',
+        f'Keep cholesterol near {context.get("target_cholesterol")} (current model level {context.get("cholesterol")}).',
+        f'Keep fasting glucose near {context.get("target_glucose")} (current model level {context.get("gluc")}).',
+        f'Maintain physical activity at {context.get("target_activity")}.',
+        'Follow a lower-salt, lower-saturated-fat eating pattern daily.',
+    ])
+
+    return recommendations[:5]
 
 
 def explain_cad_prediction_with_groq(input_data, pred, prob):
@@ -337,12 +399,7 @@ def explain_cad_prediction_with_groq(input_data, pred, prob):
         return {
             'provider': 'local-fallback',
             'summary': fallback,
-            'recommendations': [
-                'Control blood pressure regularly.',
-                'Reduce saturated fat and salt intake.',
-                'Avoid smoking and limit alcohol.',
-                'Keep physical activity consistent.',
-            ],
+            'recommendations': build_cad_recommendations(context),
         }
 
     try:
@@ -352,31 +409,42 @@ def explain_cad_prediction_with_groq(input_data, pred, prob):
         )
         
         prompt = (
-            'You are a clinical AI analyzing coronary artery disease (CAD) risk. '
-            'IMPORTANT: Use ONLY the specific health metrics provided. Do NOT give generic "consult a doctor" advice when you can be specific. '
-            'Here are the specific metrics from this patient:\n'
-            f'- Age: {context.get("age")}\n'
-            f'- Blood Pressure: {context.get("ap_hi")}/{context.get("ap_lo")}\n'
-            f'- Cholesterol Level: {context.get("cholesterol")}\n'
-            f'- Glucose: {context.get("gluc")}\n'
-            f'- Smoking: {"Yes" if context.get("smoke") else "No"}\n'
-            f'- Alcohol Use: {"Yes" if context.get("alco") else "No"}\n'
-            f'- Physical Activity: {"Yes" if context.get("active") else "No"}\n'
-            f'- Risk Probability: {context.get("probability")}%\n\n'
-            'Based on THESE ACTUAL VALUES:\n'
-            '1. Explain briefly why the model predicted this CAD risk level\n'
-            '2. List 3-5 SPECIFIC actions tailored to THIS patient\'s actual risk factors\n'
-            '3. Be concrete and actionable with specific metrics\n'
-            'Do not say "consult a doctor" generically - give specific lifestyle and health targets.'
+            'You are a clinical explainer for a CAD risk dashboard. Use only the patient metrics below. '
+            'Write 1 clear plain-language summary paragraph and exactly 5 numbered actions. '
+            'Keep the total response around 150-210 words. '
+            'Do not use markdown bullets, bold text, headings, or extra commentary. '
+            'Do not say "consult a doctor" unless absolutely necessary. '
+            'Use the actual lifestyle flags exactly as written. '
+            'Smoking history and alcohol use are the real user inputs, not model features. '
+            'Only mention smoking cessation if Smoking history is Yes. '
+            'Only mention alcohol reduction if Alcohol Use is Yes. '
+            'If those flags are No, omit them entirely and do not comment on them. '
+            'If physical activity is Yes, say to maintain it and include the target range. '
+            'Whenever you mention blood pressure, cholesterol, or glucose, include safe target ranges and compare with current values. '
+            'Focus on concrete, patient-specific guidance using the values provided.\n'
+            f'Age: {context.get("age")}\n'
+            f'Blood Pressure: {context.get("ap_hi")}/{context.get("ap_lo")}\n'
+            f'Cholesterol Level (model): {context.get("cholesterol")}\n'
+            f'Cholesterol raw: {context.get("cholesterol_raw")} mg/dL\n'
+            f'Glucose (model): {context.get("gluc")}\n'
+            f'Glucose raw: {context.get("gluc_raw")} mg/dL\n'
+            f'Smoking history: {context.get("smoking_status")}\n'
+            f'Alcohol use: {context.get("alcohol_status")}\n'
+            f'Physical Activity: {"Yes" if context.get("active") else "No"}\n'
+            f'Target BP: {context.get("target_bp")}\n'
+            f'Target Cholesterol: {context.get("target_cholesterol")}\n'
+            f'Target Glucose: {context.get("target_glucose")}\n'
+            f'Target Activity: {context.get("target_activity")}\n'
+            f'Risk Probability: {context.get("probability")}%'
         )
         
         response = client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
-                {'role': 'system', 'content': 'You are a direct clinical advisor. Use the specific patient data provided. Never give generic advice when you can be concrete and specific. Be actionable.'},
+                {'role': 'system', 'content': 'You are a direct clinical advisor. Use the specific patient data provided. Be concrete, readable, and avoid generic advice.'},
                 {'role': 'user', 'content': prompt},
             ],
-            temperature=0.6,
+            temperature=0.45,
             max_tokens=300,
         )
         
@@ -391,12 +459,7 @@ def explain_cad_prediction_with_groq(input_data, pred, prob):
         return {
             'provider': 'local-fallback',
             'summary': f'{fallback} Groq explanation could not be loaded: {exc}',
-            'recommendations': [
-                'Control blood pressure regularly.',
-                'Reduce saturated fat and salt intake.',
-                'Avoid smoking and limit alcohol.',
-                'Keep physical activity consistent.',
-            ],
+            'recommendations': build_cad_recommendations(context),
         }
 
 
@@ -784,8 +847,12 @@ def predict_cad_route():
             'weight': float(data['weight']),
             'ap_hi': float(data['ap_hi']),
             'ap_lo': float(data['ap_lo']),
+            'cholesterol_raw': float(data['cholesterol']),
+            'gluc_raw': float(data['gluc']),
             'cholesterol': normalize_level_1_to_3(data['cholesterol'], mild_threshold=200, severe_threshold=240),
             'gluc': normalize_level_1_to_3(data['gluc'], mild_threshold=100, severe_threshold=126),
+            'smoke_raw': int(data['smoke']),
+            'alco_raw': int(data['alco']),
             'smoke': reverse_binary_flag(data['smoke']),
             'alco': reverse_binary_flag(data['alco']),
             'active': int(data['active'])
