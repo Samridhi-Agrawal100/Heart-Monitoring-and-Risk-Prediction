@@ -1,19 +1,31 @@
 import sqlite3
+import random
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 DB_NAME = "database.db"
 
-
-def _get_connection() -> sqlite3.Connection:
+def init_db():
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_db() -> None:
-    conn = _get_connection()
     cursor = conn.cursor()
+    
+    # Table to store heart attack prediction logs
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS health_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_name TEXT,
+        date TEXT,
+        age INTEGER,
+        cholesterol_level REAL,
+        systolic_bp REAL,
+        diastolic_bp REAL,
+        heart_rate REAL, 
+        model_used TEXT,
+        risk_percentage REAL
+    )
+    """)
 
+    # New unified table used by current Flask app.
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS prediction_logs (
@@ -42,33 +54,13 @@ def init_db() -> None:
         )
         """
     )
-
-    conn.commit()
-    conn.close()
-
-
-def reset_all_data() -> None:
-    """Delete all logged prediction records so the app can start fresh."""
-    conn = _get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("DELETE FROM prediction_logs")
-    cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'prediction_logs'")
-
-    # Clean legacy table if it still exists from older versions.
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='health_logs'"
-    )
-    if cursor.fetchone() is not None:
-        cursor.execute("DELETE FROM health_logs")
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'health_logs'")
-
     conn.commit()
     conn.close()
 
 
 def insert_prediction(record: Dict[str, Any]) -> None:
-    conn = _get_connection()
+    """Unified insert used by app.py for heart attack, CAD, and ECG predictions."""
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -106,65 +98,79 @@ def insert_prediction(record: Dict[str, Any]) -> None:
         ),
     )
 
+    # Keep legacy table in sync for heart attack history compatibility.
+    if record.get("prediction_type") == "heart_attack":
+        cursor.execute(
+            """
+            INSERT INTO health_logs (
+                patient_name, date, age, cholesterol_level, systolic_bp,
+                diastolic_bp, heart_rate, model_used, risk_percentage
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record.get("patient_name"),
+                record.get("date"),
+                record.get("age"),
+                record.get("cholesterol_level"),
+                record.get("systolic_bp"),
+                record.get("diastolic_bp"),
+                record.get("heart_rate"),
+                record.get("model_used"),
+                record.get("risk_percentage"),
+            ),
+        )
+
     conn.commit()
     conn.close()
 
+def insert_log(patient_name, date, age, cholesterol_level, systolic_bp, diastolic_bp, heart_rate, model_used, risk_percentage):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO health_logs (patient_name, date, age, cholesterol_level, systolic_bp, diastolic_bp, heart_rate, model_used, risk_percentage)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (patient_name, date, age, cholesterol_level, systolic_bp, diastolic_bp, heart_rate, model_used, risk_percentage))
+    conn.commit()
+    conn.close()
 
-def insert_log(
-    patient_name: str,
-    date: str,
-    age: float,
-    cholesterol_level: float,
-    systolic_bp: float,
-    diastolic_bp: float,
-    heart_rate: float,
-    model_used: str,
-    risk_percentage: float,
-) -> None:
-    """Backward-compatible helper for heart attack predictions."""
-    insert_prediction(
-        {
-            "patient_name": patient_name,
-            "date": date,
-            "prediction_type": "heart_attack",
-            "model_used": model_used,
-            "risk_percentage": risk_percentage,
-            "age": age,
-            "heart_rate": heart_rate,
-            "cholesterol_level": cholesterol_level,
-            "systolic_bp": systolic_bp,
-            "diastolic_bp": diastolic_bp,
-        }
-    )
-
-
-def _row_to_log(row: sqlite3.Row) -> Dict[str, Any]:
-    return {
-        "date": row["date"],
-        "risk_percentage": row["risk_percentage"],
-        "cholesterol_level": row["cholesterol_level"],
-        "systolic_bp": row["systolic_bp"],
-        "diastolic_bp": row["diastolic_bp"],
-        "heart_rate": row["heart_rate"],
-        "model_used": row["model_used"],
-        "prediction_type": row["prediction_type"],
-        "risk_label": row["risk_label"],
-        "age": row["age"],
-        "gender": row["gender"],
-        "triglyceride_level": row["triglyceride_level"],
-        "ldl_level": row["ldl_level"],
-        "hdl_level": row["hdl_level"],
-        "glucose_level": row["glucose_level"],
-        "stress_level": row["stress_level"],
-        "pollution_exposure": row["pollution_exposure"],
-        "physical_activity": row["physical_activity"],
-    }
+def get_recent_logs(limit=10):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    # Fetch recent logs ordered by date
+    cursor.execute("""
+    SELECT date, risk_percentage, cholesterol_level, systolic_bp, diastolic_bp, heart_rate, model_used 
+    FROM health_logs 
+    ORDER BY date DESC LIMIT ?
+    """, (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # format rows into dict
+    logs = []
+    for r in rows:
+        logs.append({
+            "date": r[0],
+            "risk_percentage": r[1],
+            "cholesterol_level": r[2],
+            "systolic_bp": r[3],
+            "diastolic_bp": r[4],
+            "heart_rate": r[5],
+            "model_used": r[6]
+        })
+    return logs
 
 
 def get_recent_logs(limit: int = 10, prediction_type: Optional[str] = "heart_attack") -> List[Dict[str, Any]]:
-    conn = _get_connection()
+    """Return recent logs in the schema expected by the current frontend/app.
+
+    Falls back to legacy health_logs table if prediction_logs is empty.
+    """
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
+    # Prefer unified table used by current app.
     if prediction_type:
         cursor.execute(
             """
@@ -188,5 +194,99 @@ def get_recent_logs(limit: int = 10, prediction_type: Optional[str] = "heart_att
         )
 
     rows = cursor.fetchall()
+    if rows:
+        conn.close()
+        return [
+            {
+                "date": row["date"],
+                "risk_percentage": row["risk_percentage"],
+                "cholesterol_level": row["cholesterol_level"],
+                "systolic_bp": row["systolic_bp"],
+                "diastolic_bp": row["diastolic_bp"],
+                "heart_rate": row["heart_rate"],
+                "model_used": row["model_used"],
+                "prediction_type": row["prediction_type"],
+                "risk_label": row["risk_label"],
+                "age": row["age"],
+                "gender": row["gender"],
+                "triglyceride_level": row["triglyceride_level"],
+                "ldl_level": row["ldl_level"],
+                "hdl_level": row["hdl_level"],
+                "glucose_level": row["glucose_level"],
+                "stress_level": row["stress_level"],
+                "pollution_exposure": row["pollution_exposure"],
+                "physical_activity": row["physical_activity"],
+            }
+            for row in rows
+        ]
+
+    # Fallback for old table so old data is still visible.
+    cursor.execute(
+        """
+        SELECT date, risk_percentage, cholesterol_level, systolic_bp,
+               diastolic_bp, heart_rate, model_used, age
+        FROM health_logs
+        ORDER BY date DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    legacy_rows = cursor.fetchall()
     conn.close()
-    return [_row_to_log(row) for row in rows]
+
+    return [
+        {
+            "date": row["date"],
+            "risk_percentage": row["risk_percentage"],
+            "cholesterol_level": row["cholesterol_level"],
+            "systolic_bp": row["systolic_bp"],
+            "diastolic_bp": row["diastolic_bp"],
+            "heart_rate": row["heart_rate"],
+            "model_used": row["model_used"],
+            "prediction_type": "heart_attack",
+            "risk_label": None,
+            "age": row["age"],
+            "gender": None,
+            "triglyceride_level": None,
+            "ldl_level": None,
+            "hdl_level": None,
+            "glucose_level": None,
+            "stress_level": None,
+            "pollution_exposure": None,
+            "physical_activity": None,
+        }
+        for row in legacy_rows
+    ]
+
+def seed_database():
+    """Seed the database with 10 days of past data showing risk decreasing."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM health_logs")
+    if cursor.fetchone()[0] == 0:
+        base_date = datetime.now() - timedelta(days=10)
+        cholesterol = 280
+        sys_bp = 160
+        dia_bp = 100
+        hr = 85
+        risk = 75.0
+        
+        for i in range(10):
+            date_str = (base_date + timedelta(days=i)).strftime("%Y-%m-%d %H:%M:%S")
+            insert_log("Siddh", date_str, 45, cholesterol, sys_bp, dia_bp, hr, "Ensemble (RF + XGBoost)", round(risk, 2))
+            
+            # Simulate health improvement
+            cholesterol -= random.uniform(2, 6)
+            sys_bp -= random.uniform(1, 3)
+            dia_bp -= random.uniform(0.5, 2)
+            hr -= random.uniform(0.5, 1.5)
+            risk -= random.uniform(2, 5)
+            
+            if risk < 5: risk = 5
+            
+    conn.close()
+
+if __name__ == "__main__":
+    init_db()
+    seed_database()
+    print("Database initialized and seeded.")

@@ -233,7 +233,6 @@ body {
     display: grid;
     gap: 18px;
 }
-
 .output-card {
     padding: 18px;
     background: var(--surface);
@@ -467,20 +466,150 @@ body {
     border: 1px solid rgba(255, 125, 143, 0.2);
 }
 
-.bar-chart {
+.signal-summary {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 5px;
-    align-items: end;
-    height: 96px;
-    margin: 10px 0 16px;
+    gap: 12px;
+    margin: 8px 0 16px;
 }
 
-.bar-chart span {
-    display: block;
-    border-radius: 6px 6px 0 0;
-    background: linear-gradient(180deg, #d62948 0%, #7e0f29 100%);
+.snapshot-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 8px 0 16px;
 }
+
+.signal-item {
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px);
+}
+
+.signal-item span {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.72);
+    font-weight: 800;
+    margin-bottom: 6px;
+}
+
+.signal-item strong {
+    display: block;
+    font-size: 14px;
+    line-height: 1.2;
+    color: #ffffff;
+    font-weight: 800;
+}
+
+.mini-card.risk-low .signal-item {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.mini-card.risk-moderate .signal-item {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.mini-card.risk-high .signal-item {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.snapshot-explanation {
+    padding: 16px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.snapshot-explanation-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.snapshot-explanation-head strong {
+    font-size: 15px;
+    font-weight: 800;
+    color: #ffffff;
+}
+
+.snapshot-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 11px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, rgba(209, 18, 56, 0.3) 0%, rgba(209, 18, 56, 0.15) 100%);
+    border: 1px solid rgba(209, 18, 56, 0.5);
+    color: #ffc0cb;
+}
+
+.snapshot-summary {
+    color: rgba(255, 255, 255, 0.90);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 0;
+}
+
+.snapshot-explanation p {
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.recommendations-section {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.recommendations-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 8px !important;
+}
+
+.snapshot-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.snapshot-list li {
+    display: flex;
+    gap: 9px;
+    margin-bottom: 8px;
+    align-items: flex-start;
+}
+
+.snapshot-list .bullet {
+    flex-shrink: 0;
+    color: rgba(209, 18, 56, 0.8);
+    font-weight: 900;
+    margin-top: 1px;
+}
+
+.snapshot-list li + li {
+    margin-top: 8px;
+}
+
+.signal-line {
+    display: flex;
 
 .signal-line {
     display: flex;

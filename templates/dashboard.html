@@ -57,20 +57,6 @@
                         </div>
 
                         <div class="field">
-                            <label for="height">Height (cm)</label>
-                            <input type="number" id="height" name="height" value="170" required>
-                        </div>
-                        <div class="field">
-                            <label for="weight">Weight (kg)</label>
-                            <input type="number" id="weight" name="weight" value="70" required>
-                        </div>
-
-                        <div class="field span-2">
-                            <label for="heart_rate">Heart Rate</label>
-                            <input type="number" id="heart_rate" name="heart_rate" value="64" required>
-                        </div>
-
-                        <div class="field">
                             <label for="triglyceride">Blood Fat (Triglycerides)</label>
                             <input type="number" id="triglyceride" name="triglyceride" value="150" required>
                         </div>
@@ -202,39 +188,62 @@
 
                 </form>
             </section>
+            <div class="output-column">
+                <aside class="output-card state-neutral" id="result-card">
+                    <div class="output-topline"></div>
+                    <div class="result-head">
+                        <div id="result-icon" class="alert-icon neutral">?</div>
+                        <div class="confidence">Model Output <strong id="risk-percent">--</strong></div>
+                    </div>
 
-            <aside class="output-card state-neutral" id="result-card">
-                <div class="output-topline"></div>
-                <div class="result-head">
-                    <div id="result-icon" class="alert-icon neutral">?</div>
-                    <div class="confidence">Model Output <strong id="risk-percent">--</strong></div>
-                </div>
-
-                <div class="ring-wrap" aria-label="Heart attack risk probability">
-                    <svg viewBox="0 0 220 220">
-                        <circle cx="110" cy="110" r="84" fill="none" stroke="#edf0f5" stroke-width="12"></circle>
-                        <circle id="risk-ring" class="neutral" cx="110" cy="110" r="84" fill="none" stroke-linecap="round" stroke-width="12" stroke-dasharray="527" stroke-dashoffset="527"></circle>
-                    </svg>
-                    <div class="ring-center">
-                        <div>
-                            <strong id="risk-value">--</strong>
-                            <span id="risk-level">Awaiting Prediction</span>
+                    <div class="ring-wrap" aria-label="Heart attack risk probability">
+                        <svg viewBox="0 0 220 220">
+                            <circle cx="110" cy="110" r="84" fill="none" stroke="#edf0f5" stroke-width="12"></circle>
+                            <circle id="risk-ring" class="neutral" cx="110" cy="110" r="84" fill="none" stroke-linecap="round" stroke-width="12" stroke-dasharray="527" stroke-dashoffset="527"></circle>
+                        </svg>
+                        <div class="ring-center">
+                            <div>
+                                <strong id="risk-value">--</strong>
+                                <span id="risk-level">Awaiting Prediction</span>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div>
-                    <h2 id="result-text" class="result-card-title">Waiting for Model Output</h2>
-                    <p id="result-subtext" class="result-desc">Submit the clinical inputs to see the risk score returned by the existing heart-attack model.</p>
-                </div>
+                    <div>
+                        <h2 id="result-text" class="result-card-title">Waiting for Model Output</h2>
+                        <p id="result-subtext" class="result-desc">Submit the clinical inputs to see the risk score returned by the existing heart-attack model.</p>
+                    </div>
 
-                <button type="submit" form="prediction-form" class="primary-btn neutral" id="analyze-btn">Analyze Heart Attack Risk</button>
-            </aside>
+                    <button type="submit" form="prediction-form" class="primary-btn neutral" id="analyze-btn">Analyze Heart Attack Risk</button>
+                </aside>
+
+                <aside class="output-card state-neutral" id="clinical-snapshot-card" style="display: none;">
+                    <div class="snapshot-wrapper">
+                        <div class="snapshot-header">
+                            <h3 class="snapshot-title">Clinical Snapshot</h3>
+                            <span class="snapshot-risk-level" id="snapshot-risk-level">Risk Level: --</span>
+                        </div>
+                        <div id="snapshot-content">
+                            <div class="snapshot-explanation">
+                                <div class="snapshot-explanation-head">
+                                    <span class="snapshot-tag">Awaiting</span>
+                                    <strong>Clinical Insight</strong>
+                                </div>
+                                <p>Run a prediction to view AI-powered clinical recommendations.</p>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
         </div>
     </main>
 
     <script>
         const resultCard = document.getElementById('result-card');
+        const snapshotCard = document.getElementById('clinical-snapshot-card');
+        const snapshotContent = document.getElementById('snapshot-content');
+        const snapshotRiskLevel = document.getElementById('snapshot-risk-level');
         const riskRing = document.getElementById('risk-ring');
         const riskPercent = document.getElementById('risk-percent');
         const riskValue = document.getElementById('risk-value');
@@ -244,9 +253,40 @@
         const resultIcon = document.getElementById('result-icon');
         const analyzeBtn = document.getElementById('analyze-btn');
 
+        function buildClinicalSnapshot(explanation) {
+            if (!explanation) {
+                snapshotCard.style.display = 'none';
+                return;
+            }
+
+            const snapshotHtml = `
+                <div class="output-topline"></div>
+                <div class="snapshot-explanation">
+                    <div class="snapshot-explanation-head">
+                        <span class="snapshot-tag">${explanation.provider === 'groq' ? 'Groq AI' : 'Local Fallback'}</span>
+                        <strong>Clinical Insight</strong>
+                    </div>
+                    <p class="snapshot-summary">${explanation.summary || 'No explanation returned.'}</p>
+                    ${Array.isArray(explanation.recommendations) && explanation.recommendations.length ? `
+                        <div class="recommendations-section">
+                            <p class="recommendations-title">Key Actions:</p>
+                            <ul class="snapshot-list">
+                                ${explanation.recommendations.map((item) => `<li><span class="bullet">•</span> ${item}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            snapshotContent.innerHTML = snapshotHtml;
+            snapshotCard.style.display = 'block';
+        }
+
         function setNeutralState() {
             resultCard.classList.remove('low', 'moderate', 'high');
             resultCard.classList.add('state-neutral');
+            snapshotCard.classList.remove('low', 'moderate', 'high');
+            snapshotCard.classList.add('state-neutral');
             riskRing.classList.remove('low', 'moderate', 'high');
             riskRing.classList.add('neutral');
             analyzeBtn.classList.remove('low', 'moderate', 'high');
@@ -258,9 +298,12 @@
             riskPercent.textContent = '--';
             riskValue.textContent = '--';
             riskLevel.textContent = 'Awaiting Prediction';
+            snapshotRiskLevel.textContent = 'Risk Level: --';
+            snapshotRiskLevel.classList.remove('low', 'moderate', 'high');
             resultText.textContent = 'Waiting for Model Output';
             resultSubtext.textContent = 'Submit the clinical inputs to see the risk score returned by the existing heart-attack model.';
             riskRing.setAttribute('stroke-dashoffset', '527');
+            snapshotCard.style.display = 'none';
         }
 
         function setRiskTheme(probability) {
@@ -270,6 +313,9 @@
             resultCard.classList.remove('state-neutral');
             resultCard.classList.remove('low', 'moderate', 'high');
             resultCard.classList.add(level);
+            snapshotCard.classList.remove('state-neutral');
+            snapshotCard.classList.remove('low', 'moderate', 'high');
+            snapshotCard.classList.add(level);
             riskRing.classList.remove('neutral');
             riskRing.classList.remove('low', 'moderate', 'high');
             riskRing.classList.add(level);
@@ -282,16 +328,25 @@
 
             if (level === 'low') {
                 riskLevel.textContent = 'Lower Risk';
+                snapshotRiskLevel.textContent = 'RISK LEVEL: LOW';
+                snapshotRiskLevel.classList.remove('moderate', 'high');
+                snapshotRiskLevel.classList.add('low');
                 resultIcon.textContent = '✓';
                 resultText.textContent = 'Lower Heart Attack Probability';
                 resultSubtext.textContent = 'Model output suggests a lower probability. Continue routine monitoring and preventive care.';
             } else if (level === 'moderate') {
                 riskLevel.textContent = 'Moderate Risk';
+                snapshotRiskLevel.textContent = 'RISK LEVEL: MODERATE';
+                snapshotRiskLevel.classList.remove('low', 'high');
+                snapshotRiskLevel.classList.add('moderate');
                 resultIcon.textContent = '!';
                 resultText.textContent = 'Moderate Heart Attack Probability';
                 resultSubtext.textContent = 'Model output suggests intermediate risk. Review lifestyle and follow-up recommendations.';
             } else {
                 riskLevel.textContent = 'High Risk';
+                snapshotRiskLevel.textContent = 'RISK LEVEL: HIGH';
+                snapshotRiskLevel.classList.remove('low', 'moderate');
+                snapshotRiskLevel.classList.add('high');
                 resultIcon.textContent = '!';
                 resultText.textContent = 'High Heart Attack Probability';
                 resultSubtext.textContent = 'Model output indicates elevated risk. Clinical consultation is recommended.';
@@ -320,9 +375,6 @@
                 diastolic: parseFloat(document.getElementById('diastolic').value),
                 cholesterol: parseFloat(document.getElementById('cholesterol').value),
                 gluc: parseInt(document.getElementById('gluc').value, 10),
-                height: parseFloat(document.getElementById('height').value),
-                weight: parseFloat(document.getElementById('weight').value),
-                heart_rate: parseFloat(document.getElementById('heart_rate').value),
                 triglyceride: parseFloat(document.getElementById('triglyceride').value),
                 ldl: parseFloat(document.getElementById('ldl').value),
                 hdl: parseFloat(document.getElementById('hdl').value),
@@ -352,11 +404,19 @@
                 if (!res.ok) {
                     resultText.textContent = 'Prediction Failed';
                     resultSubtext.textContent = data.error || 'Prediction failed.';
+                    snapshotCard.style.display = 'none';
                     return;
                 }
 
                 setRiskTheme(data.risk_percentage);
                 resultSubtext.textContent = `Model used: ${data.model_used}. Risk returned by backend: ${data.risk_percentage}%.`;
+                
+                // Show clinical snapshot with explanation
+                if (data.explanation) {
+                    buildClinicalSnapshot(data.explanation);
+                } else {
+                    snapshotCard.style.display = 'none';
+                }
             } catch (error) {
                 resultText.textContent = 'Connection Error';
                 resultSubtext.textContent = 'Failed to connect to prediction endpoint.';

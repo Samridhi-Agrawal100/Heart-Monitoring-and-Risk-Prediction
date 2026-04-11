@@ -73,6 +73,13 @@ body {
     align-items: start;
 }
 
+.output-column {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 0;
+}
+
 .panel,
 .output-card,
 .side-card {
@@ -260,6 +267,7 @@ body {
 
 .output-card {
     padding: 18px;
+    width: 100%;
 }
 
 .output-topline {
@@ -457,10 +465,181 @@ body {
     line-height: 1.5;
 }
 
+/* Clinical Snapshot Styles */
+#clinical-snapshot-card {
+    background: linear-gradient(180deg, #231227 0%, #2b1730 100%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: 0 18px 50px rgba(24, 18, 22, 0.14);
+    border-radius: 24px;
+    padding: 18px;
+}
+
+.snapshot-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.snapshot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.snapshot-title {
+    font-size: 24px;
+    line-height: 1;
+    font-weight: 800;
+    color: #ffffff;
+    margin: 0;
+    letter-spacing: -0.7px;
+}
+
+.snapshot-risk-level {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    background: rgba(34, 197, 94, 0.12);
+    color: #8ef0b3;
+    border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.snapshot-risk-level.low {
+    background: rgba(34, 197, 94, 0.12);
+    color: #8ef0b3;
+    border-color: rgba(34, 197, 94, 0.45);
+}
+
+.snapshot-risk-level.moderate {
+    background: rgba(245, 158, 11, 0.12);
+    color: #f9cf84;
+    border-color: rgba(245, 158, 11, 0.45);
+}
+
+.snapshot-risk-level.high {
+    background: rgba(209, 19, 56, 0.12);
+    color: #ffb0c0;
+    border-color: rgba(209, 19, 56, 0.45);
+}
+
+.snapshot-explanation {
+    padding: 16px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.snapshot-explanation-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.snapshot-explanation-head strong {
+    font-size: 15px;
+    font-weight: 800;
+    color: #ffffff;
+}
+
+.snapshot-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 11px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, rgba(209, 19, 56, 0.3) 0%, rgba(209, 19, 56, 0.15) 100%);
+    border: 1px solid rgba(209, 19, 56, 0.5);
+    color: #ffc0cb;
+}
+
+.snapshot-summary {
+    color: rgba(255, 255, 255, 0.90);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 0;
+}
+
+.snapshot-explanation p {
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.recommendations-section {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.recommendations-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 8px !important;
+}
+
+.snapshot-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.snapshot-list li {
+    display: flex;
+    gap: 9px;
+    margin-bottom: 8px;
+    align-items: flex-start;
+}
+
+.snapshot-list .bullet {
+    flex-shrink: 0;
+    color: rgba(209, 19, 56, 0.8);
+    font-weight: 900;
+    margin-top: 1px;
+}
+
+.snapshot-list li + li {
+    margin-top: 8px;
+}
+
 @media (max-width: 1000px) {
     .heart-grid {
         grid-template-columns: 1fr;
     }
+
+    .output-column {
+        width: 100%;
+    }
+}
+
+#clinical-snapshot-card.low {
+    background: linear-gradient(180deg, #183326 0%, #203b2d 100%);
+}
+
+#clinical-snapshot-card.moderate {
+    background: linear-gradient(180deg, #342618 0%, #3d2d1f 100%);
+}
+
+#clinical-snapshot-card.high {
+    background: linear-gradient(180deg, #321726 0%, #3b1d2c 100%);
 }
 
 @media (max-width: 640px) {

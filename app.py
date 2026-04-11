@@ -8,6 +8,9 @@ from pathlib import Path
 from io import BytesIO
 from datetime import datetime
 from database import init_db, insert_prediction, get_recent_logs
+from openai import OpenAI
+import json
+import os
 
 try:
     import torch
@@ -23,6 +26,28 @@ except Exception as exc:
     ECG_IMPORT_ERROR = str(exc)
 
 app = Flask(__name__)
+
+
+def load_env_file(env_path):
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding='utf-8').splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+
+        key, value = line.split('=', 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_env_file(Path(__file__).resolve().parent / '.env')
+
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '').strip()
+GROQ_MODEL = os.environ.get('GROQ_MODEL', 'llama-3.1-70b-versatile').strip()
 
 # ===============================
 # 1. Initialize Database
@@ -199,7 +224,19 @@ ECG_PYTORCH_MODEL, ECG_ID_TO_LABEL, ECG_TRANSFORM, ECG_LOAD_ERROR = load_ecg_pyt
 def model_probability(model, features):
     """Return the probability of the positive class as a percentage."""
     if hasattr(model, "predict_proba"):
-        return float(model.predict_proba(features)[0][1] * 100)
+        proba = model.predict_proba(features)
+        if len(proba.shape) != 2 or proba.shape[1] == 0:
+            raise ValueError("Model predict_proba output has unexpected shape.")
+
+        class_index = 1 if proba.shape[1] > 1 else 0
+        if hasattr(model, "classes_") and len(model.classes_) == proba.shape[1]:
+            classes = list(model.classes_)
+            for preferred_positive in (1, "1", True):
+                if preferred_positive in classes:
+                    class_index = classes.index(preferred_positive)
+                    break
+
+        return float(proba[0][class_index] * 100)
 
     if hasattr(model, "decision_function"):
         decision = model.decision_function(features)
@@ -231,6 +268,246 @@ def normalize_level_1_to_3(value, mild_threshold, severe_threshold):
     return 3
 
 
+def reverse_binary_flag(value):
+    return 0 if int(value) else 1
+
+
+def parse_groq_explanation(raw_text):
+    """Parse Groq response into summary and recommendations."""
+    lines = raw_text.strip().split('\n')
+    summary_lines = []
+    recommendations = []
+    
+    for line in lines:
+        line = line.strip()
+        # Check if it's a numbered recommendation (e.g., "1. ...", "2. ...")
+        if line and line[0].isdigit() and '.' in line[:3]:
+            # Remove number, dot, and asterisks from the line
+            clean = line.split('.', 1)[1].strip() if '.' in line else line
+            clean = clean.replace('**', '').strip()
+            if clean:
+                recommendations.append(clean)
+        elif line and not any(line.startswith(str(i) + '.') for i in range(1, 10)):
+            # This is part of the summary
+            summary_lines.append(line)
+    
+    # First 2-3 sentences for summary
+    summary = ' '.join(summary_lines[:100]).strip()  # Take first part, limit length
+    
+    return {
+        'summary': summary[:300],  # Keep summary reasonably short
+        'recommendations': recommendations[:5],  # Max 5 recommendations
+    }
+
+
+def build_cad_context_for_llm(input_data, pred, prob):
+    bmi = input_data['weight'] / ((input_data['height'] / 100.0) ** 2) if input_data['height'] else None
+    pulse_pressure = input_data['ap_hi'] - input_data['ap_lo']
+    bp_ratio = input_data['ap_hi'] / input_data['ap_lo'] if input_data['ap_lo'] else None
+
+    return {
+        'age': input_data['age'],
+        'gender': 'Male' if input_data['gender'] == 1 else 'Female',
+        'height': input_data['height'],
+        'weight': input_data['weight'],
+        'bmi': round(bmi, 2) if bmi is not None else None,
+        'ap_hi': input_data['ap_hi'],
+        'ap_lo': input_data['ap_lo'],
+        'pulse_pressure': round(pulse_pressure, 2),
+        'bp_ratio': round(bp_ratio, 2) if bp_ratio is not None else None,
+        'cholesterol': input_data['cholesterol'],
+        'gluc': input_data['gluc'],
+        'smoke': input_data['smoke'],
+        'alco': input_data['alco'],
+        'active': input_data['active'],
+        'prediction': int(pred),
+        'probability': round(float(prob) * 100, 2) if prob is not None else None,
+    }
+
+
+def explain_cad_prediction_with_groq(input_data, pred, prob):
+    context = build_cad_context_for_llm(input_data, pred, prob)
+    fallback = (
+        f"CAD model predicted {'High CAD Risk' if pred == 1 else 'Lower CAD Risk'} with "
+        f"{context['probability']}% confidence. Key inputs: age {context['age']}, BP {context['ap_hi']}/{context['ap_lo']}, "
+        f"cholesterol {context['cholesterol']}, glucose {context['gluc']}, smoking {context['smoke']}, alcohol {context['alco']}, activity {context['active']}."
+    )
+
+    if not GROQ_API_KEY:
+        return {
+            'provider': 'local-fallback',
+            'summary': fallback,
+            'recommendations': [
+                'Control blood pressure regularly.',
+                'Reduce saturated fat and salt intake.',
+                'Avoid smoking and limit alcohol.',
+                'Keep physical activity consistent.',
+            ],
+        }
+
+    try:
+        client = OpenAI(
+            api_key=GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1",
+        )
+        
+        prompt = (
+            'You are a clinical AI analyzing coronary artery disease (CAD) risk. '
+            'IMPORTANT: Use ONLY the specific health metrics provided. Do NOT give generic "consult a doctor" advice when you can be specific. '
+            'Here are the specific metrics from this patient:\n'
+            f'- Age: {context.get("age")}\n'
+            f'- Blood Pressure: {context.get("ap_hi")}/{context.get("ap_lo")}\n'
+            f'- Cholesterol Level: {context.get("cholesterol")}\n'
+            f'- Glucose: {context.get("gluc")}\n'
+            f'- Smoking: {"Yes" if context.get("smoke") else "No"}\n'
+            f'- Alcohol Use: {"Yes" if context.get("alco") else "No"}\n'
+            f'- Physical Activity: {"Yes" if context.get("active") else "No"}\n'
+            f'- Risk Probability: {context.get("probability")}%\n\n'
+            'Based on THESE ACTUAL VALUES:\n'
+            '1. Explain briefly why the model predicted this CAD risk level\n'
+            '2. List 3-5 SPECIFIC actions tailored to THIS patient\'s actual risk factors\n'
+            '3. Be concrete and actionable with specific metrics\n'
+            'Do not say "consult a doctor" generically - give specific lifestyle and health targets.'
+        )
+        
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {'role': 'system', 'content': 'You are a direct clinical advisor. Use the specific patient data provided. Never give generic advice when you can be concrete and specific. Be actionable.'},
+                {'role': 'user', 'content': prompt},
+            ],
+            temperature=0.6,
+            max_tokens=300,
+        )
+        
+        content = response.choices[0].message.content.strip()
+        parsed = parse_groq_explanation(content)
+        return {
+            'provider': 'groq',
+            'summary': parsed['summary'],
+            'recommendations': parsed['recommendations'],
+        }
+    except Exception as exc:
+        return {
+            'provider': 'local-fallback',
+            'summary': f'{fallback} Groq explanation could not be loaded: {exc}',
+            'recommendations': [
+                'Control blood pressure regularly.',
+                'Reduce saturated fat and salt intake.',
+                'Avoid smoking and limit alcohol.',
+                'Keep physical activity consistent.',
+            ],
+        }
+
+
+def build_heart_attack_context_for_llm(input_data, pred, prob):
+    """Build context dict for heart attack LLM explanation."""
+    return {
+        'age': input_data.get('Age'),
+        'gender': input_data.get('Gender', 'Unknown'),
+        'cholesterol': input_data.get('Cholesterol_Level'),
+        'systolic_bp': input_data.get('Systolic_BP'),
+        'diastolic_bp': input_data.get('Diastolic_BP'),
+        'triglyceride': input_data.get('Triglyceride_Level'),
+        'ldl': input_data.get('LDL_Level'),
+        'hdl': input_data.get('HDL_Level'),
+        'diet_score': input_data.get('Diet_Score'),
+        'stress_level': input_data.get('Stress_Level'),
+        'pollution': input_data.get('Air_Pollution_Exposure'),
+        'physical_activity': input_data.get('Physical_Activity'),
+        'smoking': input_data.get('Smoking'),
+        'alcohol': input_data.get('Alcohol_Consumption'),
+        'diabetes': input_data.get('Diabetes'),
+        'hypertension': input_data.get('Hypertension'),
+        'obesity': input_data.get('Obesity'),
+        'family_history': input_data.get('Family_History'),
+        'heart_attack_history': input_data.get('Heart_Attack_History'),
+        'prediction': int(pred),
+        'probability': round(float(prob) * 100, 2) if prob is not None else None,
+    }
+
+
+def explain_heart_attack_prediction_with_groq(input_data, pred, prob):
+    """Explain heart attack prediction using Groq LLM."""
+    context = build_heart_attack_context_for_llm(input_data, pred, prob)
+    fallback = (
+        f"Heart attack risk model predicted {'High Risk' if pred == 1 else 'Lower Risk'} with "
+        f"{context['probability']}% confidence based on age {context['age']}, BP {context['systolic_bp']}/{context['diastolic_bp']}, "
+        f"cholesterol {context['cholesterol']}, smoking {context['smoking']}, and other cardiovascular factors."
+    )
+
+    if not GROQ_API_KEY:
+        return {
+            'provider': 'local-fallback',
+            'summary': fallback,
+            'recommendations': [
+                'Monitor blood pressure regularly and maintain a healthy diet.',
+                'Increase physical activity to at least 150 minutes per week.',
+                'Avoid smoking and limit alcohol consumption.',
+                'Manage stress through relaxation and lifestyle changes.',
+                'Schedule regular check-ups with your healthcare provider.',
+            ],
+        }
+
+    try:
+        client = OpenAI(
+            api_key=GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1",
+        )
+        
+        prompt = (
+            'You are a clinical AI analyzing heart attack risk. '
+            'IMPORTANT: Use ONLY the specific health metrics provided. Do NOT make generic recommendations or ask the patient to "consult a doctor" for general advice. '
+            'Here are the specific metrics from this patient:\n'
+            f'- Age: {context.get("age")}\n'
+            f'- Cholesterol: {context.get("cholesterol")} mg/dL\n'
+            f'- Blood Pressure: {context.get("systolic_bp")}/{context.get("diastolic_bp")}\n'
+            f'- LDL: {context.get("ldl")}, HDL: {context.get("hdl")}, Triglycerides: {context.get("triglyceride")}\n'
+            f'- Smoking: {"Yes" if context.get("smoking") else "No"}\n'
+            f'- Diabetes: {"Yes" if context.get("diabetes") else "No"}\n'
+            f'- Physical Activity: {"Yes" if context.get("physical_activity") else "No"}\n'
+            f'- Stress Level: {context.get("stress_level")}/10\n'
+            f'- Risk Probability: {context.get("probability")}%\n\n'
+            'Based on THESE ACTUAL VALUES (not generic patient profiles):\n'
+            '1. Explain briefly why the model predicted this risk level USING THE SPECIFIC METRICS ABOVE\n'
+            '2. List 3-5 SPECIFIC actions to reduce risk, tailored to THIS patient\'s actual risk factors\n'
+            '3. Be concrete - mention specific values and what needs to change\n'
+            'Example: "Your cholesterol at 240 is high - aim to lower to <200" NOT "manage cholesterol"\n'
+            'Example: "You smoke - stop smoking within the next month" NOT "consult doctor about smoking"\n'
+            'Do not say "consult a doctor" unless absolutely necessary. Give actionable steps.'
+        )
+        
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {'role': 'system', 'content': 'You are a direct clinical advisor. Use the specific patient data provided. Never give generic "consult a doctor" advice when you can be specific. Be actionable and concrete.'},
+                {'role': 'user', 'content': prompt},
+            ],
+            temperature=0.6,
+            max_tokens=300,
+        )
+        
+        content = response.choices[0].message.content.strip()
+        parsed = parse_groq_explanation(content)
+        return {
+            'provider': 'groq',
+            'summary': parsed['summary'],
+            'recommendations': parsed['recommendations'],
+        }
+    except Exception as exc:
+        return {
+            'provider': 'local-fallback',
+            'summary': f'{fallback} Groq explanation could not be loaded: {exc}',
+            'recommendations': [
+                'Monitor blood pressure regularly and maintain a healthy diet.',
+                'Increase physical activity to at least 150 minutes per week.',
+                'Avoid smoking and limit alcohol consumption.',
+                'Manage stress through relaxation and lifestyle changes.',
+                'Schedule regular check-ups with your healthcare provider.',
+            ],
+        }
+
+
 def predict_cardio(input_data):
     if CAD_MODEL is None or CAD_SCALER is None or CAD_FEATURES is None:
         raise ValueError('CAD artifacts missing. Required: cardio_model.pkl, scaler.pkl, features.pkl in CAD_model folder.')
@@ -249,7 +526,21 @@ def predict_cardio(input_data):
     df_scaled = CAD_SCALER.transform(df)
 
     pred = int(CAD_MODEL.predict(df_scaled)[0])
-    prob = float(CAD_MODEL.predict_proba(df_scaled)[0][1]) if hasattr(CAD_MODEL, 'predict_proba') else None
+    prob = None
+    if hasattr(CAD_MODEL, 'predict_proba'):
+        proba = CAD_MODEL.predict_proba(df_scaled)
+        if len(proba.shape) != 2 or proba.shape[1] == 0:
+            raise ValueError('CAD model predict_proba output has unexpected shape.')
+
+        class_index = 1 if proba.shape[1] > 1 else 0
+        if hasattr(CAD_MODEL, 'classes_') and len(CAD_MODEL.classes_) == proba.shape[1]:
+            classes = list(CAD_MODEL.classes_)
+            for preferred_positive in (1, '1', True):
+                if preferred_positive in classes:
+                    class_index = classes.index(preferred_positive)
+                    break
+
+        prob = float(proba[0][class_index])
 
     return pred, prob
 
@@ -390,6 +681,7 @@ def predict():
                     else:
                         df_input[col] = enc.transform([enc.classes_[0]])
 
+        # RF/XGB were trained on unscaled features in train.py, so keep raw encoded values.
         X = df_input
 
         rf_prob = None
@@ -412,6 +704,9 @@ def predict():
             }.get(model_choice, model_choice)
 
         risk_prob = float(risk_prob)
+        
+        # Get Groq explanation for the prediction
+        explanation = explain_heart_attack_prediction_with_groq(input_dict, 1 if risk_prob >= 50 else 0, risk_prob / 100.0)
         
         # Save heart attack prediction logs with vitals.
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -442,6 +737,7 @@ def predict():
         return jsonify({
             'risk_percentage': round(risk_prob, 2),
             'model_used': model_label,
+            'explanation': explanation,
             'ensemble_breakdown': {
                 'rf': round(rf_prob, 2) if rf_prob is not None else None,
                 'xgb': round(xgb_prob, 2) if xgb_prob is not None else None,
@@ -490,12 +786,13 @@ def predict_cad_route():
             'ap_lo': float(data['ap_lo']),
             'cholesterol': normalize_level_1_to_3(data['cholesterol'], mild_threshold=200, severe_threshold=240),
             'gluc': normalize_level_1_to_3(data['gluc'], mild_threshold=100, severe_threshold=126),
-            'smoke': int(data['smoke']),
-            'alco': int(data['alco']),
+            'smoke': reverse_binary_flag(data['smoke']),
+            'alco': reverse_binary_flag(data['alco']),
             'active': int(data['active'])
         }
 
         pred, prob = predict_cardio(input_data)
+        explanation = explain_cad_prediction_with_groq(input_data, pred, prob)
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         risk_score = float(prob * 100) if prob is not None else (100.0 if pred == 1 else 0.0)
@@ -521,6 +818,7 @@ def predict_cad_route():
             'prediction': pred,
             'risk_label': 'High CAD Risk' if pred == 1 else 'Lower CAD Risk',
             'probability': round(prob * 100, 2) if prob is not None else None,
+            'explanation': explanation,
             'message': 'CAD prediction successful.'
         })
     except Exception as e:

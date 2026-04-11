@@ -14,7 +14,7 @@
     <main class="history-shell">
         <p class="status-pill">Data Vault: Historical Monitoring</p>
         <h1 class="hero-title">Health <span>History</span> Timeline</h1>
-        <p class="hero-subtitle">Clean overview of your prediction trend, health movement, and recorded history.</p>
+        <p class="hero-subtitle">Review previous recorded clinical entries, identify the best recorded day, and visualize heartbeat trend over time.</p>
 
         <section class="charts-grid">
             <article class="card chart-card">
@@ -30,7 +30,7 @@
             <article class="card chart-card">
                 <div class="chart-head">
                     <h3>Prediction Risk Plot</h3>
-                    <span>Latest movement</span>
+                    <span>Sequence of all recorded predictions</span>
                 </div>
                 <div class="chart-holder">
                     <canvas id="riskChart"></canvas>
@@ -38,7 +38,7 @@
             </article>
         </section>
 
-        <section class="card insights-strip">
+        <section class="card insights">
             <div class="insight-top">
                 <h2>Trend Insights</h2>
                 <button id="refresh-btn" class="refresh-btn" type="button">Refresh</button>
@@ -53,28 +53,29 @@
                 <div class="badge">
                     <small>Best Risk Score</small>
                     <strong id="best-risk">--</strong>
-                    <p id="best-risk-note">From all records.</p>
+                    <p id="best-risk-note">Calculated from all available history.</p>
                 </div>
                 <div class="badge">
                     <small>Average Heart Rate</small>
                     <strong id="avg-hr">--</strong>
-                    <p id="avg-hr-note">Average BPM.</p>
+                    <p id="avg-hr-note">Mean value across all records.</p>
                 </div>
                 <div class="badge">
                     <small>Condition Trend</small>
                     <strong id="trend-status">--</strong>
-                    <p id="trend-note">Based on latest change.</p>
+                    <p id="trend-note">Calculated from risk movement over time.</p>
                 </div>
                 <div class="badge">
                     <small>Last Change Ratio</small>
                     <strong id="last-change">--</strong>
-                    <p id="last-change-note">Latest vs previous.</p>
+                    <p id="last-change-note">Compares latest risk with previous prediction.</p>
                 </div>
             </div>
 
+            <div id="empty-state" class="empty hidden">No history records found yet. Run predictions to start building your health timeline.</div>
         </section>
 
-        <section class="card table-card full-width-table">
+        <article class="card table-card">
             <div class="table-head">
                 <h3>Previous Records</h3>
                 <span id="record-count">0 entries</span>
@@ -89,12 +90,13 @@
                             <th>BP (S/D)</th>
                             <th>Cholesterol</th>
                             <th>Type</th>
+                            <th>Model</th>
                         </tr>
                     </thead>
                     <tbody id="history-table-body"></tbody>
                 </table>
             </div>
-        </section>
+        </article>
     </main>
 
     <script>
@@ -117,7 +119,6 @@
 
         function setEmptyState(isEmpty) {
             const empty = document.getElementById('empty-state');
-            if (!empty) return;
             if (isEmpty) empty.classList.remove('hidden');
             else empty.classList.add('hidden');
         }
@@ -143,6 +144,7 @@
                     <td>${Number.isFinite(sys) && Number.isFinite(dia) ? `${sys.toFixed(0)}/${dia.toFixed(0)}` : '--'}</td>
                     <td>${Number.isFinite(chol) ? chol.toFixed(0) : '--'}</td>
                     <td>${log.prediction_type || '--'}</td>
+                    <td>${log.model_used}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -373,6 +375,7 @@
                 }
             } catch (error) {
                 setEmptyState(true);
+                document.getElementById('empty-state').textContent = 'Unable to load history right now. Please try again.';
             }
         }
 
