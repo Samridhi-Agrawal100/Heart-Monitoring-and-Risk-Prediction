@@ -263,7 +263,7 @@
                 <div class="output-topline"></div>
                 <div class="snapshot-explanation">
                     <div class="snapshot-explanation-head">
-                        <span class="snapshot-tag">${explanation.provider === 'groq' ? 'Groq AI' : 'Local Fallback'}</span>
+                        <span class="snapshot-tag">${String(explanation.provider || '').startsWith('groq') ? 'Groq AI' : 'Local Fallback'}</span>
                         <strong>Clinical Insight</strong>
                     </div>
                     <p class="snapshot-summary">${explanation.summary || 'No explanation returned.'}</p>

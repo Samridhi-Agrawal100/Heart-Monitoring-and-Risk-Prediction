@@ -120,6 +120,24 @@
 
         function summaryFromLabel(label, state) {
             const labelText = label || 'Model output received';
+            const normalizedLabel = String(labelText).toLowerCase();
+
+            if (normalizedLabel === 'normal') {
+                return `${labelText}. No need to worry, you are all safe.`;
+            }
+
+            if (normalizedLabel === 'arrhythmia (abnormal_heartbeat)') {
+                return `${labelText}. Model suggests moderate irregularity. Follow-up interpretation is recommended.`;
+            }
+
+            if (normalizedLabel === 'heart attack') {
+                return `${labelText}. Predicted result was "myocardial_infarction"; the current image is suggestive of heart attack.`;
+            }
+
+            if (normalizedLabel === 'past history of heart attack') {
+                return `${labelText}. Predicted result was "post_mi_history"; this suggests the patient has experienced heart attack before.`;
+            }
+
             if (state === 'state-low') {
                 return `${labelText}. Pattern confidence is low-risk. Continue regular monitoring and clinician review if symptoms appear.`;
             }

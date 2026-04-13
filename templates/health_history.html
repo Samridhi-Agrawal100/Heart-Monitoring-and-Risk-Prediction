@@ -111,6 +111,23 @@
             return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
         }
 
+        function toTimestamp(value) {
+            const ts = Date.parse(value);
+            return Number.isFinite(ts) ? ts : 0;
+        }
+
+        function toFiniteNumber(value) {
+            if (value === null || value === undefined) return NaN;
+            if (typeof value === 'string') {
+                const trimmed = value.trim();
+                if (!trimmed || trimmed === '--') return NaN;
+                const parsed = Number(trimmed);
+                return Number.isFinite(parsed) ? parsed : NaN;
+            }
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? numeric : NaN;
+        }
+
         function riskClass(risk) {
             if (risk < 35) return 'risk-low';
             if (risk < 65) return 'risk-mid';
@@ -128,13 +145,13 @@
             tbody.innerHTML = '';
 
             logs.forEach((log) => {
-                const riskValue = Number(log.risk_percentage);
+                const riskValue = toFiniteNumber(log.risk_percentage);
                 const hasRisk = Number.isFinite(riskValue);
-                const hr = Number(log.heart_rate);
+                const hr = toFiniteNumber(log.heart_rate);
                 const hasHr = Number.isFinite(hr);
-                const sys = Number(log.systolic_bp);
-                const dia = Number(log.diastolic_bp);
-                const chol = Number(log.cholesterol_level);
+                const sys = toFiniteNumber(log.systolic_bp);
+                const dia = toFiniteNumber(log.diastolic_bp);
+                const chol = toFiniteNumber(log.cholesterol_level);
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
@@ -144,17 +161,18 @@
                     <td>${Number.isFinite(sys) && Number.isFinite(dia) ? `${sys.toFixed(0)}/${dia.toFixed(0)}` : '--'}</td>
                     <td>${Number.isFinite(chol) ? chol.toFixed(0) : '--'}</td>
                     <td>${log.prediction_type || '--'}</td>
-                    <td>${log.model_used}</td>
+                    <td>${log.model_used || '--'}</td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
         function renderSummary(logs) {
+            const orderedLogs = [...logs].sort((a, b) => toTimestamp(a.date) - toTimestamp(b.date));
             const recordCount = document.getElementById('record-count');
-            recordCount.textContent = `${logs.length} ${logs.length === 1 ? 'entry' : 'entries'}`;
+            recordCount.textContent = `${orderedLogs.length} ${orderedLogs.length === 1 ? 'entry' : 'entries'}`;
 
-            if (!logs.length) {
+            if (!orderedLogs.length) {
                 document.getElementById('best-date').textContent = '--';
                 document.getElementById('best-date-note').textContent = 'Waiting for records.';
                 document.getElementById('best-risk').textContent = '--';
@@ -166,15 +184,17 @@
                 return;
             }
 
-            const riskRows = logs.filter((row) => Number.isFinite(Number(row.risk_percentage)));
+            const riskRows = orderedLogs.filter((row) => Number.isFinite(toFiniteNumber(row.risk_percentage)));
             const best = riskRows.reduce((acc, cur) => {
-                if (!acc || cur.risk_percentage < acc.risk_percentage) return cur;
+                const currentRisk = toFiniteNumber(cur.risk_percentage);
+                const bestRisk = acc ? toFiniteNumber(acc.risk_percentage) : NaN;
+                if (!acc || currentRisk < bestRisk) return cur;
                 return acc;
             }, null);
 
-            const hrRows = logs.filter((row) => Number.isFinite(Number(row.heart_rate)));
+            const hrRows = orderedLogs.filter((row) => Number.isFinite(toFiniteNumber(row.heart_rate)));
             const avgHr = hrRows.length
-                ? (hrRows.reduce((sum, row) => sum + Number(row.heart_rate), 0) / hrRows.length)
+                ? (hrRows.reduce((sum, row) => sum + toFiniteNumber(row.heart_rate), 0) / hrRows.length)
                 : null;
 
             let trendStatus = 'Stable';
@@ -183,8 +203,8 @@
             let lastChangeNote = 'Need at least 2 predictions to compare.';
 
             if (riskRows.length >= 2) {
-                const latest = Number(riskRows[riskRows.length - 1].risk_percentage);
-                const previous = Number(riskRows[riskRows.length - 2].risk_percentage);
+                const latest = toFiniteNumber(riskRows[riskRows.length - 1].risk_percentage);
+                const previous = toFiniteNumber(riskRows[riskRows.length - 2].risk_percentage);
                 const delta = latest - previous;
                 const improvementPoints = previous - latest;
                 const changeRatio = previous > 0 ? (improvementPoints / previous) * 100 : null;
@@ -220,8 +240,9 @@
 
             if (best) {
                 document.getElementById('best-date').textContent = formatDate(best.date);
-                document.getElementById('best-date-note').textContent = `Risk ${Number(best.risk_percentage).toFixed(2)}% on this day.`;
-                document.getElementById('best-risk').textContent = `${Number(best.risk_percentage).toFixed(2)}%`;
+                const bestRisk = toFiniteNumber(best.risk_percentage);
+                document.getElementById('best-date-note').textContent = `Risk ${bestRisk.toFixed(2)}% on this day.`;
+                document.getElementById('best-risk').textContent = `${bestRisk.toFixed(2)}%`;
             } else {
                 document.getElementById('best-date').textContent = '--';
                 document.getElementById('best-date-note').textContent = 'No risk score records yet.';
@@ -236,9 +257,9 @@
         }
 
         function renderHrChart(logs) {
-            const heartRows = logs.filter((row) => Number.isFinite(Number(row.heart_rate)));
+            const heartRows = logs.filter((row) => Number.isFinite(toFiniteNumber(row.heart_rate)));
             const labels = heartRows.map((row) => formatDate(row.date));
-            const hrValues = heartRows.map((row) => Number(row.heart_rate));
+            const hrValues = heartRows.map((row) => toFiniteNumber(row.heart_rate));
             const ctx = document.getElementById('hrChart').getContext('2d');
 
             if (hrChartInstance) {
@@ -291,9 +312,9 @@
         }
 
         function renderRiskChart(logs) {
-            const riskRows = logs.filter((row) => Number.isFinite(Number(row.risk_percentage)));
+            const riskRows = logs.filter((row) => Number.isFinite(toFiniteNumber(row.risk_percentage)));
             const labels = riskRows.map((row) => formatDate(row.date));
-            const riskValues = riskRows.map((row) => Number(row.risk_percentage));
+            const riskValues = riskRows.map((row) => toFiniteNumber(row.risk_percentage));
             const ctx = document.getElementById('riskChart').getContext('2d');
 
             if (riskChartInstance) {
@@ -348,27 +369,35 @@
 
         async function loadHistory() {
             try {
-                const res = await fetch('/history/full');
+                const res = await fetch(`/history/full?prediction_type=all&_=${Date.now()}`, { cache: 'no-store' });
                 const logs = await res.json();
 
                 if (!res.ok) {
                     throw new Error(logs.error || 'Could not load history');
                 }
 
-                setEmptyState(logs.length === 0);
-                renderSummary(logs);
-                renderTable(logs);
-                const hasHeartRateRows = logs.some((row) => Number.isFinite(Number(row.heart_rate)));
+                const filteredLogs = logs.filter((row) => {
+                    const predictionType = String(row.prediction_type || '').toLowerCase();
+                    return predictionType === 'heart_attack' || predictionType === 'cad';
+                });
+
+                const sortedLogs = [...filteredLogs].sort((a, b) => toTimestamp(a.date) - toTimestamp(b.date));
+                const tableLogs = [...sortedLogs].reverse();
+
+                setEmptyState(sortedLogs.length === 0);
+                renderSummary(sortedLogs);
+                renderTable(tableLogs);
+                const hasHeartRateRows = sortedLogs.some((row) => Number.isFinite(toFiniteNumber(row.heart_rate)));
                 if (hasHeartRateRows) {
-                    renderHrChart(logs);
+                    renderHrChart(sortedLogs);
                 } else if (hrChartInstance) {
                     hrChartInstance.destroy();
                     hrChartInstance = null;
                 }
 
-                const hasRiskRows = logs.some((row) => Number.isFinite(Number(row.risk_percentage)));
+                const hasRiskRows = sortedLogs.some((row) => Number.isFinite(toFiniteNumber(row.risk_percentage)));
                 if (hasRiskRows) {
-                    renderRiskChart(logs);
+                    renderRiskChart(sortedLogs);
                 } else if (riskChartInstance) {
                     riskChartInstance.destroy();
                     riskChartInstance = null;

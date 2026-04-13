@@ -40,7 +40,7 @@ def load_env_file(env_path):
         key, value = line.split('=', 1)
         key = key.strip()
         value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
+        if key:
             os.environ[key] = value
 
 
@@ -48,6 +48,75 @@ load_env_file(Path(__file__).resolve().parent / '.env')
 
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '').strip()
 GROQ_MODEL = os.environ.get('GROQ_MODEL', 'llama-3.1-70b-versatile').strip()
+
+# Accept common key aliases to avoid silent fallback due to env naming mismatch.
+if not GROQ_API_KEY:
+    GROQ_API_KEY = (
+        os.environ.get('GROQ_APIKEY', '').strip()
+        or os.environ.get('GROQ_KEY', '').strip()
+        or os.environ.get('GROQ_TOKEN', '').strip()
+    )
+
+if GROQ_API_KEY.lower().startswith('bearer '):
+    GROQ_API_KEY = GROQ_API_KEY.split(' ', 1)[1].strip()
+
+GROQ_MODEL_CANDIDATES = [
+    GROQ_MODEL,
+    'llama-3.3-70b-versatile',
+    'llama-3.1-70b-versatile',
+    'mixtral-8x7b-32768',
+]
+
+
+def call_groq_with_failover(messages, temperature=0.5, max_tokens=300):
+    """Call Groq with model failover so one invalid model does not disable summarization."""
+    if not GROQ_API_KEY:
+        raise RuntimeError('Missing GROQ_API_KEY in environment (.env).')
+
+    client = OpenAI(
+        api_key=GROQ_API_KEY,
+        base_url='https://api.groq.com/openai/v1',
+    )
+
+    seen = set()
+    models_to_try = []
+    for candidate in GROQ_MODEL_CANDIDATES:
+        model_name = (candidate or '').strip()
+        if not model_name or model_name in seen:
+            continue
+        seen.add(model_name)
+        models_to_try.append(model_name)
+
+    last_error = None
+    for model_name in models_to_try:
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            content = (response.choices[0].message.content or '').strip()
+            if not content:
+                raise RuntimeError(f'Groq returned empty content for model {model_name}.')
+            return content, model_name
+        except Exception as exc:
+            last_error = exc
+            print(f'Warning: Groq call failed for model {model_name}: {exc}')
+            continue
+
+    raise RuntimeError(f'All Groq model attempts failed: {last_error}')
+
+
+def classify_groq_error(exc):
+    text = str(exc).lower()
+    if 'invalid_api_key' in text or 'invalid api key' in text or 'authentication' in text or '401' in text:
+        return 'Groq key is invalid or expired. Update GROQ_API_KEY in .env and restart the app.'
+    if 'rate limit' in text or '429' in text:
+        return 'Groq rate limit reached. Please retry in a short while.'
+    if 'timeout' in text or 'timed out' in text:
+        return 'Groq request timed out. Please retry.'
+    return 'Groq is temporarily unavailable. Using local fallback recommendations.'
 
 # ===============================
 # 1. Initialize Database
@@ -370,19 +439,64 @@ def build_cad_context_for_llm(input_data, pred, prob):
 def build_cad_recommendations(context):
     recommendations = []
 
+    bp_sys = float(context.get('ap_hi', 0) or 0)
+    bp_dia = float(context.get('ap_lo', 0) or 0)
+    cholesterol_raw = context.get('cholesterol_raw')
+    glucose_raw = context.get('gluc_raw')
+    is_active = bool(context.get('active'))
+
+    if bp_sys > 120 or bp_dia > 80:
+        recommendations.append(
+            f'Bring blood pressure toward {context.get("target_bp")} (current {bp_sys:.0f}/{bp_dia:.0f}). '
+            'One practical way: reduce sodium intake to under 2 g/day and add a 10-15 minute walk after lunch and dinner.'
+        )
+    else:
+        recommendations.append(
+            f'Keep blood pressure in the healthy range around {context.get("target_bp")} (current {bp_sys:.0f}/{bp_dia:.0f}). '
+            'One practical way: continue home BP checks 3 times/week and keep daily salt low.'
+        )
+
+    if cholesterol_raw is not None and float(cholesterol_raw) >= 200:
+        recommendations.append(
+            f'Lower total cholesterol toward <200 mg/dL (current {float(cholesterol_raw):.0f} mg/dL). '
+            'One practical way: replace fried snacks with high-fiber options (oats, legumes, nuts) at least 5 days/week.'
+        )
+    else:
+        current_chol = float(cholesterol_raw) if cholesterol_raw is not None else context.get('cholesterol')
+        recommendations.append(
+            f'Keep cholesterol in the good range (<200 mg/dL, current {current_chol}). '
+            'One practical way: maintain a high-fiber breakfast and avoid trans-fat foods on weekdays.'
+        )
+
+    if glucose_raw is not None and float(glucose_raw) >= 100:
+        recommendations.append(
+            f'Lower fasting glucose toward <100 mg/dL (current {float(glucose_raw):.0f} mg/dL). '
+            'One practical way: use the plate method (half vegetables, quarter protein, quarter whole grains) and walk 10 minutes after meals.'
+        )
+    else:
+        current_glucose = float(glucose_raw) if glucose_raw is not None else context.get('gluc')
+        recommendations.append(
+            f'Keep glucose in the good range (<100 mg/dL fasting, current {current_glucose}). '
+            'One practical way: keep portions consistent and avoid late-night sugary snacks.'
+        )
+
+    if is_active:
+        recommendations.append(
+            f'Maintain physical activity at {context.get("target_activity")}. '
+            'One practical way: schedule 30-minute brisk walks on 5 days/week and track it in your phone.'
+        )
+    else:
+        recommendations.append(
+            f'Increase physical activity to {context.get("target_activity")}. '
+            'One practical way: start with 20 minutes of brisk walking 5 days/week and increase to 30 minutes within 2-3 weeks.'
+        )
+
     if context.get('smoking_status') == 'Yes':
-        recommendations.append('Stop smoking to reduce CAD risk.')
-
-    if context.get('alcohol_status') == 'Yes':
-        recommendations.append('Limit alcohol use to minimize its negative impact.')
-
-    recommendations.extend([
-        f'Keep blood pressure near {context.get("target_bp")} (current {context.get("ap_hi")}/{context.get("ap_lo")}).',
-        f'Keep cholesterol near {context.get("target_cholesterol")} (current model level {context.get("cholesterol")}).',
-        f'Keep fasting glucose near {context.get("target_glucose")} (current model level {context.get("gluc")}).',
-        f'Maintain physical activity at {context.get("target_activity")}.',
-        'Follow a lower-salt, lower-saturated-fat eating pattern daily.',
-    ])
+        recommendations.append('Stop smoking. One practical way: set a quit date this month and remove cigarette triggers from daily routine.')
+    elif context.get('alcohol_status') == 'Yes':
+        recommendations.append('Reduce alcohol intake. One practical way: limit to 1 drink/day and keep at least 2 alcohol-free days each week.')
+    else:
+        recommendations.append('Maintain your low-risk lifestyle habits. One practical way: keep a weekly checklist for sleep, steps, hydration, and stress control.')
 
     return recommendations[:5]
 
@@ -403,11 +517,6 @@ def explain_cad_prediction_with_groq(input_data, pred, prob):
         }
 
     try:
-        client = OpenAI(
-            api_key=GROQ_API_KEY,
-            base_url="https://api.groq.com/openai/v1",
-        )
-        
         prompt = (
             'You are a clinical explainer for a CAD risk dashboard. Use only the patient metrics below. '
             'Write 1 clear plain-language summary paragraph and exactly 5 numbered actions. '
@@ -415,6 +524,8 @@ def explain_cad_prediction_with_groq(input_data, pred, prob):
             'Do not use markdown bullets, bold text, headings, or extra commentary. '
             'Do not say "consult a doctor" unless absolutely necessary. '
             'Use the actual lifestyle flags exactly as written. '
+            'For each action, include both: (a) the healthy target range, and (b) one practical way to improve/maintain it. '
+            'If a metric is above target, say how to decrease it. If below recommended target (like activity), say how to increase it. If already in range, say how to maintain it. '
             'Smoking history and alcohol use are the real user inputs, not model features. '
             'Only mention smoking cessation if Smoking history is Yes. '
             'Only mention alcohol reduction if Alcohol Use is Yes. '
@@ -437,9 +548,8 @@ def explain_cad_prediction_with_groq(input_data, pred, prob):
             f'Target Activity: {context.get("target_activity")}\n'
             f'Risk Probability: {context.get("probability")}%'
         )
-        
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
+
+        content, model_used = call_groq_with_failover(
             messages=[
                 {'role': 'system', 'content': 'You are a direct clinical advisor. Use the specific patient data provided. Be concrete, readable, and avoid generic advice.'},
                 {'role': 'user', 'content': prompt},
@@ -447,18 +557,17 @@ def explain_cad_prediction_with_groq(input_data, pred, prob):
             temperature=0.45,
             max_tokens=300,
         )
-        
-        content = response.choices[0].message.content.strip()
         parsed = parse_groq_explanation(content)
         return {
-            'provider': 'groq',
+            'provider': f'groq:{model_used}',
             'summary': parsed['summary'],
             'recommendations': parsed['recommendations'],
         }
     except Exception as exc:
+        failure_reason = classify_groq_error(exc)
         return {
             'provider': 'local-fallback',
-            'summary': f'{fallback} Groq explanation could not be loaded: {exc}',
+            'summary': f'{fallback} {failure_reason}',
             'recommendations': build_cad_recommendations(context),
         }
 
@@ -513,11 +622,6 @@ def explain_heart_attack_prediction_with_groq(input_data, pred, prob):
         }
 
     try:
-        client = OpenAI(
-            api_key=GROQ_API_KEY,
-            base_url="https://api.groq.com/openai/v1",
-        )
-        
         prompt = (
             'You are a clinical AI analyzing heart attack risk. '
             'IMPORTANT: Use ONLY the specific health metrics provided. Do NOT make generic recommendations or ask the patient to "consult a doctor" for general advice. '
@@ -539,9 +643,8 @@ def explain_heart_attack_prediction_with_groq(input_data, pred, prob):
             'Example: "You smoke - stop smoking within the next month" NOT "consult doctor about smoking"\n'
             'Do not say "consult a doctor" unless absolutely necessary. Give actionable steps.'
         )
-        
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
+
+        content, model_used = call_groq_with_failover(
             messages=[
                 {'role': 'system', 'content': 'You are a direct clinical advisor. Use the specific patient data provided. Never give generic "consult a doctor" advice when you can be specific. Be actionable and concrete.'},
                 {'role': 'user', 'content': prompt},
@@ -549,18 +652,17 @@ def explain_heart_attack_prediction_with_groq(input_data, pred, prob):
             temperature=0.6,
             max_tokens=300,
         )
-        
-        content = response.choices[0].message.content.strip()
         parsed = parse_groq_explanation(content)
         return {
-            'provider': 'groq',
+            'provider': f'groq:{model_used}',
             'summary': parsed['summary'],
             'recommendations': parsed['recommendations'],
         }
     except Exception as exc:
+        failure_reason = classify_groq_error(exc)
         return {
             'provider': 'local-fallback',
-            'summary': f'{fallback} Groq explanation could not be loaded: {exc}',
+            'summary': f'{fallback} {failure_reason}',
             'recommendations': [
                 'Monitor blood pressure regularly and maintain a healthy diet.',
                 'Increase physical activity to at least 150 minutes per week.',
@@ -609,8 +711,16 @@ def predict_cardio(input_data):
 
 
 def ecg_label_name(class_index):
+    friendly_labels = {
+        'normal_ecg_images': 'Normal',
+        'abnormal_heartbeat_ecg_images': 'Arrhythmia (abnormal_heartbeat)',
+        'myocardial_infarction_ecg_images': 'Heart Attack',
+        'post_mi_history_ecg_images': 'Past history of Heart Attack',
+    }
+
     if isinstance(ECG_ID_TO_LABEL, dict):
-        return str(ECG_ID_TO_LABEL.get(class_index, class_index))
+        raw_label = str(ECG_ID_TO_LABEL.get(class_index, class_index))
+        return friendly_labels.get(raw_label, raw_label)
     return str(class_index)
 
 
@@ -818,14 +928,30 @@ def history():
     logs = get_recent_logs(20, prediction_type='heart_attack') # get up to 20
     # ensure ascending chronological order for chart
     logs = logs[::-1]
-    return jsonify(logs)
+    response = jsonify(logs)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return response
 
 
 @app.route('/history/full', methods=['GET'])
 def history_full():
-    logs = get_recent_logs(1000, prediction_type=None)
+    prediction_type = request.args.get('prediction_type', default=None, type=str)
+    if prediction_type is not None:
+        prediction_type = prediction_type.strip().lower() or None
+        if prediction_type == 'all':
+            prediction_type = None
+
+    logs = get_recent_logs(1000, prediction_type=prediction_type)
+
+    # By default, health history should include only Heart and CAD predictions (exclude ECG).
+    if prediction_type is None:
+        allowed_types = {'heart_attack', 'cad'}
+        logs = [log for log in logs if (log.get('prediction_type') or '').lower() in allowed_types]
+
     logs = logs[::-1]
-    return jsonify(logs)
+    response = jsonify(logs)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return response
 
 
 @app.route('/predict/cad', methods=['POST'])
